@@ -1,4 +1,4 @@
-// Central Game Engine for Tag Multiplayer
+// Central Game Engine for Tag Multiplayer - 100% Single-Keyboard Local Multiplayer
 
 import { soundManager } from './audio.js';
 import { ParticleSystem } from './particles.js';
@@ -9,6 +9,7 @@ export const GAME_STATES = {
   MENU: 'MENU',
   CHOOSE_MAP: 'CHOOSE_MAP',
   SETTINGS: 'SETTINGS',
+  CONTROLS_MODAL: 'CONTROLS_MODAL',
   PLAYING: 'PLAYING',
   GAME_OVER: 'GAME_OVER'
 };
@@ -21,6 +22,7 @@ export class Game {
     this.height = canvas.height;
 
     this.state = GAME_STATES.MENU;
+    this.previousState = GAME_STATES.MENU;
     this.particles = new ParticleSystem();
 
     // Game Settings (loaded from localStorage)
@@ -44,21 +46,15 @@ export class Game {
     this.buffOrbs = [];
     this.buffSpawnTimer = 0;
 
-    // Keys pressed dictionary
-    this.keys = {};
+    // Robust multi-key tracking Set
+    this.keys = new Set();
 
-    // Mouse & Touch coordinates relative to canvas
-    this.mouse = { x: 0, y: 0, isDown: false };
+    // Mouse coordinates relative to canvas
+    this.mouse = { x: 0, y: 0 };
     this.hoveredButton = null;
 
     // Animated menu props
     this.menuAnimTime = 0;
-    this.menuNinjas = [
-      { x: 190, y: 490, color: '#ffd000', vy: 0, state: 'fall', headband: '#ffd000' },
-      { x: 260, y: 550, color: '#eb3b47', vy: 0, state: 'stand', headband: '#eb3b47' },
-      { x: 670, y: 560, color: '#38bdf8', vy: -7, state: 'jump', headband: '#38bdf8' },
-      { x: 910, y: 490, color: '#00c853', vy: 0, state: 'run', headband: '#00c853' }
-    ];
 
     // Screen Shake effect
     this.screenShake = 0;
@@ -72,14 +68,25 @@ export class Game {
 
   initEventListeners() {
     window.addEventListener('keydown', e => {
-      this.keys[e.key.toLowerCase()] = true;
-      this.keys[e.key] = true;
+      this.keys.add(e.key);
+      this.keys.add(e.code);
+      this.keys.add(e.key.toLowerCase());
       soundManager.init();
+
+      // Quick ESC key to close modal or return to menu
+      if (e.key === 'Escape') {
+        if (this.state === GAME_STATES.SETTINGS || this.state === GAME_STATES.CONTROLS_MODAL) {
+          this.state = this.previousState;
+        } else if (this.state === GAME_STATES.PLAYING) {
+          this.state = GAME_STATES.CHOOSE_MAP;
+        }
+      }
     });
 
     window.addEventListener('keyup', e => {
-      this.keys[e.key.toLowerCase()] = false;
-      this.keys[e.key] = false;
+      this.keys.delete(e.key);
+      this.keys.delete(e.code);
+      this.keys.delete(e.key.toLowerCase());
     });
 
     const updateMouse = e => {
@@ -101,7 +108,7 @@ export class Game {
       this.handleClick();
     });
 
-    // Touch event support for canvas buttons
+    // Touch event support
     this.canvas.addEventListener('touchstart', e => {
       if (e.touches.length > 0) {
         const touch = e.touches[0];
@@ -112,24 +119,19 @@ export class Game {
         this.handleClick();
       }
     }, { passive: false });
-
-    // Touch D-Pad buttons
-    document.querySelectorAll('.touch-btn').forEach(btn => {
-      const key = btn.dataset.key;
-      btn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        this.keys[key] = true;
-      });
-      btn.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        this.keys[key] = false;
-      });
-    });
   }
 
   saveSettings() {
     localStorage.setItem('tag_buffs', this.settings.buffs);
     localStorage.setItem('tag_time', this.settings.time);
+  }
+
+  toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
   }
 
   startMatch(mapKey, playerCount) {
@@ -147,26 +149,68 @@ export class Game {
     this.loserId = null;
     this.winners = [];
 
-    // Define player slots & controls
-    // P1: WASD, P2: Arrows, P3: I/J/L, P4: T/F/H
+    // Distinct 4-Player single-keyboard setup
     const configs = [
-      { id: 1, color: '#eb3b47', name: 'Player 1', controls: { left: 'a', right: 'd', jump: 'w', down: 's' } },
-      { id: 2, color: '#38bdf8', name: 'Player 2', controls: { left: 'ArrowLeft', right: 'ArrowRight', jump: 'ArrowUp', down: 'ArrowDown' } },
-      { id: 3, color: '#ffd000', name: 'Player 3', controls: { left: 'j', right: 'l', jump: 'i', down: 'k' } },
-      { id: 4, color: '#00c853', name: 'Player 4', controls: { left: 'f', right: 'h', jump: 't', down: 'g' } }
+      {
+        id: 1,
+        color: '#eb3b47',
+        name: 'Player 1',
+        label: 'W-A-S-D',
+        controls: {
+          leftKeys: ['a', 'A', 'KeyA'],
+          rightKeys: ['d', 'D', 'KeyD'],
+          jumpKeys: ['w', 'W', 'KeyW', ' '],
+          downKeys: ['s', 'S', 'KeyS']
+        }
+      },
+      {
+        id: 2,
+        color: '#38bdf8',
+        name: 'Player 2',
+        label: 'ARROWS',
+        controls: {
+          leftKeys: ['arrowleft', 'ArrowLeft'],
+          rightKeys: ['arrowright', 'ArrowRight'],
+          jumpKeys: ['arrowup', 'ArrowUp'],
+          downKeys: ['arrowdown', 'ArrowDown']
+        }
+      },
+      {
+        id: 3,
+        color: '#ffd000',
+        name: 'Player 3',
+        label: 'I-J-K-L',
+        controls: {
+          leftKeys: ['j', 'J', 'KeyJ'],
+          rightKeys: ['l', 'L', 'KeyL'],
+          jumpKeys: ['i', 'I', 'KeyI'],
+          downKeys: ['k', 'K', 'KeyK']
+        }
+      },
+      {
+        id: 4,
+        color: '#00c853',
+        name: 'Player 4',
+        label: 'T-F-G-H',
+        controls: {
+          leftKeys: ['f', 'F', 'KeyF'],
+          rightKeys: ['h', 'H', 'KeyH'],
+          jumpKeys: ['t', 'T', 'KeyT'],
+          downKeys: ['g', 'G', 'KeyG']
+        }
+      }
     ];
 
     this.players = [];
     for (let i = 0; i < playerCount; i++) {
       const cfg = configs[i];
       const spawn = this.currentMap.spawns[i] || { x: 200 + i * 200, y: 500 };
-      // By default Player 1 is human, other slots are bots if playing solo, or can be toggled!
-      const isBot = i > 0;
-      const player = new Player(cfg.id, cfg.color, cfg.name, spawn.x, spawn.y, cfg.controls, isBot);
+      // 100% Real Human Player on Keyboard
+      const player = new Player(cfg.id, cfg.color, cfg.name, cfg.label, spawn.x, spawn.y, cfg.controls);
       this.players.push(player);
     }
 
-    // Randomly pick one player to be IT
+    // Pick one random player to be IT
     const itIndex = Math.floor(Math.random() * playerCount);
     this.players[itIndex].tag();
 
@@ -180,85 +224,101 @@ export class Game {
     this.hoveredButton = null;
 
     if (this.state === GAME_STATES.MENU) {
-      // Audio toggle button top-right (x: 1180, y: 25, size: 60)
-      if (mx >= 1180 && mx <= 1240 && my >= 25 && my <= 85) {
+      // Audio toggle button top-right (x: 1200, y: 24, size: 56)
+      if (mx >= 1200 && mx <= 1256 && my >= 24 && my <= 80) {
         this.hoveredButton = 'audio_btn';
       }
+      // Controls button top-right (x: 1130, y: 24, size: 56)
+      if (mx >= 1130 && mx <= 1186 && my >= 24 && my <= 80) {
+        this.hoveredButton = 'controls_btn';
+      }
+      // Fullscreen button top-right (x: 1060, y: 24, size: 56)
+      if (mx >= 1060 && mx <= 1116 && my >= 24 && my <= 80) {
+        this.hoveredButton = 'fullscreen_btn';
+      }
       // 2 Players button
-      if (mx >= 460 && mx <= 820 && my >= 220 && my <= 280) {
+      if (mx >= 460 && mx <= 820 && my >= 225 && my <= 295) {
         this.hoveredButton = '2_players';
       }
       // 3 Players button
-      if (mx >= 460 && mx <= 820 && my >= 305 && my <= 365) {
+      if (mx >= 460 && mx <= 820 && my >= 320 && my <= 390) {
         this.hoveredButton = '3_players';
       }
       // 4 Players button
-      if (mx >= 460 && mx <= 820 && my >= 390 && my <= 450) {
+      if (mx >= 460 && mx <= 820 && my >= 415 && my <= 485) {
         this.hoveredButton = '4_players';
       }
     } else if (this.state === GAME_STATES.CHOOSE_MAP) {
       // Map dioramas
-      // Forest: x: 120, y: 200, w: 280, h: 260
-      if (mx >= 120 && mx <= 400 && my >= 190 && my <= 470) {
+      if (mx >= 120 && mx <= 420 && my >= 185 && my <= 475) {
         this.hoveredButton = 'map_forest';
       }
-      // Winter: x: 500, y: 200, w: 280, h: 260
-      if (mx >= 500 && mx <= 780 && my >= 190 && my <= 470) {
+      if (mx >= 480 && mx <= 800 && my >= 185 && my <= 475) {
         this.hoveredButton = 'map_winter';
       }
-      // Desert: x: 880, y: 200, w: 280, h: 260
-      if (mx >= 880 && mx <= 1160 && my >= 190 && my <= 470) {
+      if (mx >= 840 && mx <= 1160 && my >= 185 && my <= 475) {
         this.hoveredButton = 'map_desert';
       }
-      // Game Settings Button (x: 520, y: 560, w: 240, h: 56)
-      if (mx >= 510 && mx <= 770 && my >= 560 && my <= 620) {
+      // Game Settings Button (center)
+      if (mx >= 400 && mx <= 630 && my >= 570 && my <= 626) {
         this.hoveredButton = 'open_settings';
       }
-      // Back button (x: 30, y: 620, size: 60)
-      if (mx >= 30 && mx <= 90 && my >= 620 && my <= 680) {
+      // Keyboard Controls Button
+      if (mx >= 650 && mx <= 880 && my >= 570 && my <= 626) {
+        this.hoveredButton = 'controls_btn';
+      }
+      // Back button (x: 36, y: 620, size: 64)
+      if (mx >= 36 && mx <= 100 && my >= 620 && my <= 684) {
         this.hoveredButton = 'back_to_menu';
       }
     } else if (this.state === GAME_STATES.SETTINGS) {
-      // Buffs ON (x: 600, y: 220, w: 90, h: 50)
-      if (mx >= 600 && mx <= 690 && my >= 220 && my <= 270) {
+      // Buffs ON
+      if (mx >= 600 && mx <= 690 && my >= 220 && my <= 276) {
         this.hoveredButton = 'buffs_on';
       }
-      // Buffs OFF (x: 720, y: 220, w: 90, h: 50)
-      if (mx >= 720 && mx <= 810 && my >= 220 && my <= 270) {
+      // Buffs OFF
+      if (mx >= 710 && mx <= 800 && my >= 220 && my <= 276) {
         this.hoveredButton = 'buffs_off';
       }
-      // Time 60 (x: 600, y: 300, w: 65, h: 45)
-      if (mx >= 600 && mx <= 665 && my >= 300 && my <= 345) {
+      // Time 60, 120, 180
+      if (mx >= 600 && mx <= 675 && my >= 310 && my <= 366) {
         this.hoveredButton = 'time_60';
       }
-      // Time 120 (x: 680, y: 300, w: 65, h: 45)
-      if (mx >= 680 && mx <= 745 && my >= 300 && my <= 345) {
+      if (mx >= 690 && mx <= 775 && my >= 310 && my <= 366) {
         this.hoveredButton = 'time_120';
       }
-      // Time 180 (x: 760, y: 300, w: 65, h: 45)
-      if (mx >= 760 && mx <= 825 && my >= 300 && my <= 345) {
+      if (mx >= 790 && mx <= 875 && my >= 310 && my <= 366) {
         this.hoveredButton = 'time_180';
       }
-      // Close button (x: 520, y: 440, w: 240, h: 56)
-      if (mx >= 520 && mx <= 760 && my >= 440 && my <= 500) {
+      // Close button
+      if (mx >= 520 && mx <= 760 && my >= 450 && my <= 510) {
         this.hoveredButton = 'close_settings';
       }
+    } else if (this.state === GAME_STATES.CONTROLS_MODAL) {
+      // Close controls modal button
+      if (mx >= 520 && mx <= 760 && my >= 520 && my <= 580) {
+        this.hoveredButton = 'close_controls';
+      }
     } else if (this.state === GAME_STATES.PLAYING) {
-      // Pause / Back button top left
-      if (mx >= 20 && mx <= 70 && my >= 20 && my <= 70) {
+      // Menu button top left
+      if (mx >= 20 && mx <= 130 && my >= 18 && my <= 64) {
         this.hoveredButton = 'ingame_menu';
       }
+      // Controls helper button
+      if (mx >= 145 && mx <= 255 && my >= 18 && my <= 64) {
+        this.hoveredButton = 'ingame_controls';
+      }
       // Audio toggle top right
-      if (mx >= 1210 && mx <= 1260 && my >= 20 && my <= 70) {
+      if (mx >= 1205 && mx <= 1260 && my >= 18 && my <= 68) {
         this.hoveredButton = 'audio_btn';
       }
     } else if (this.state === GAME_STATES.GAME_OVER) {
-      // Play Again (x: 420, y: 520, w: 200, h: 55)
-      if (mx >= 420 && mx <= 620 && my >= 520 && my <= 575) {
+      // Play Again
+      if (mx >= 420 && mx <= 620 && my >= 530 && my <= 588) {
         this.hoveredButton = 'play_again';
       }
-      // Change Map (x: 660, y: 520, w: 200, h: 55)
-      if (mx >= 660 && mx <= 860 && my >= 520 && my <= 575) {
+      // Change Map
+      if (mx >= 660 && mx <= 860 && my >= 530 && my <= 588) {
         this.hoveredButton = 'change_map';
       }
     }
@@ -272,6 +332,17 @@ export class Game {
 
     if (this.hoveredButton === 'audio_btn') {
       soundManager.toggleMusic();
+      return;
+    }
+
+    if (this.hoveredButton === 'fullscreen_btn') {
+      this.toggleFullscreen();
+      return;
+    }
+
+    if (this.hoveredButton === 'controls_btn' || this.hoveredButton === 'ingame_controls') {
+      this.previousState = this.state;
+      this.state = GAME_STATES.CONTROLS_MODAL;
       return;
     }
 
@@ -294,6 +365,7 @@ export class Game {
       } else if (this.hoveredButton === 'map_desert') {
         this.startMatch('desert', this.playerCount);
       } else if (this.hoveredButton === 'open_settings') {
+        this.previousState = this.state;
         this.state = GAME_STATES.SETTINGS;
       } else if (this.hoveredButton === 'back_to_menu') {
         this.state = GAME_STATES.MENU;
@@ -317,19 +389,13 @@ export class Game {
       } else if (this.hoveredButton === 'close_settings') {
         this.state = GAME_STATES.CHOOSE_MAP;
       }
+    } else if (this.state === GAME_STATES.CONTROLS_MODAL) {
+      if (this.hoveredButton === 'close_controls') {
+        this.state = this.previousState;
+      }
     } else if (this.state === GAME_STATES.PLAYING) {
       if (this.hoveredButton === 'ingame_menu') {
         this.state = GAME_STATES.CHOOSE_MAP;
-      }
-      // Check clicking player bot toggle on HUD
-      const hudY = 30;
-      for (let i = 0; i < this.players.length; i++) {
-        const hudX = 140 + i * 110;
-        if (this.mouse.x >= hudX && this.mouse.x <= hudX + 90 && this.mouse.y >= hudY && this.mouse.y <= hudY + 36) {
-          this.players[i].isBot = !this.players[i].isBot;
-          soundManager.playClick();
-          break;
-        }
       }
     } else if (this.state === GAME_STATES.GAME_OVER) {
       if (this.hoveredButton === 'play_again') {
@@ -342,10 +408,10 @@ export class Game {
 
   update() {
     this.particles.update();
-    this.menuAnimTime += 0.05;
+    this.menuAnimTime += 0.045;
 
     if (this.screenShake > 0) {
-      this.screenShake *= 0.9;
+      this.screenShake *= 0.88;
       if (this.screenShake < 0.2) this.screenShake = 0;
     }
 
@@ -355,7 +421,10 @@ export class Game {
   }
 
   updatePlayingMatch() {
-    // 1. Handle match pre-countdown
+    // 1. Weather particles
+    this.particles.spawnAmbient(this.currentMap.ambientType, this.width, this.height);
+
+    // 2. Pre-match countdown
     if (!this.isMatchStarted) {
       this.countdownTimer--;
       if (this.countdownTimer % 60 === 0 && this.countdownTimer > 0) {
@@ -370,11 +439,11 @@ export class Game {
       return;
     }
 
-    // 2. Decrement Round Timer
+    // 3. Decrement Round Timer
     this.roundTimerMs -= 1000 / 60;
     this.roundTimer = Math.max(0, Math.ceil(this.roundTimerMs / 1000));
 
-    // Play suspenseful countdown beeps when <= 5 seconds left
+    // Suspense countdown when <= 5 seconds
     if (this.roundTimer <= 5 && this.roundTimerMs % 1000 < 20) {
       soundManager.playCountdown();
     }
@@ -384,42 +453,41 @@ export class Game {
       return;
     }
 
-    // 3. Update Players
+    // 4. Update 100% Human Players
     for (const player of this.players) {
       player.update(this.keys, this.currentMap, this.players, this.particles);
     }
 
-    // 4. Tag Collision Check
+    // 5. Tag Collision Check
     const itPlayer = this.players.find(p => p.isIt);
     if (itPlayer && !itPlayer.isImmune) {
       for (const target of this.players) {
         if (target.id === itPlayer.id || target.isImmune) continue;
 
-        // Collision check (circle or AABB)
         const dx = (target.x + target.width / 2) - (itPlayer.x + itPlayer.width / 2);
         const dy = (target.y + target.height / 2) - (itPlayer.y + itPlayer.height / 2);
         const dist = Math.hypot(dx, dy);
 
-        if (dist < 38) {
+        if (dist < 40) {
           // TAG OCCURRED!
           itPlayer.passTag();
           target.tag();
 
           soundManager.playTag();
-          this.screenShake = 12;
+          this.screenShake = 14;
 
-          const tagX = (itPlayer.x + target.x) / 2 + 22;
-          const tagY = (itPlayer.y + target.y) / 2 + 22;
+          const tagX = (itPlayer.x + target.x) / 2 + 23;
+          const tagY = (itPlayer.y + target.y) / 2 + 23;
           this.particles.createTagBurst(tagX, tagY);
           break;
         }
       }
     }
 
-    // 5. Buff Spawning Logic (if enabled)
+    // 6. Buff Spawning Logic (if enabled)
     if (this.settings.buffs) {
       this.buffSpawnTimer++;
-      if (this.buffSpawnTimer > 400 && this.buffOrbs.length < 3) {
+      if (this.buffSpawnTimer > 380 && this.buffOrbs.length < 3) {
         this.spawnBuffOrb();
         this.buffSpawnTimer = 0;
       }
@@ -433,7 +501,6 @@ export class Game {
           const dx = (p.x + p.width / 2) - orb.x;
           const dy = (p.y + p.height / 2) - (orb.y + Math.sin(orb.bob) * 6);
           if (Math.hypot(dx, dy) < 32) {
-            // Collected!
             soundManager.playBuff();
             this.particles.createTagBurst(orb.x, orb.y);
             p.buff = orb.type;
@@ -469,9 +536,9 @@ export class Game {
     this.winners = this.players.filter(p => !p.isIt);
 
     // Confetti celebration
-    this.particles.createConfetti(this.width / 2, 220, 100);
-    this.particles.createConfetti(this.width / 4, 300, 60);
-    this.particles.createConfetti((3 * this.width) / 4, 300, 60);
+    this.particles.createConfetti(this.width / 2, 220, 110);
+    this.particles.createConfetti(this.width / 4, 300, 70);
+    this.particles.createConfetti((3 * this.width) / 4, 300, 70);
   }
 
   render() {
@@ -492,6 +559,13 @@ export class Game {
     } else if (this.state === GAME_STATES.SETTINGS) {
       this.renderChooseMap();
       this.renderSettingsModal();
+    } else if (this.state === GAME_STATES.CONTROLS_MODAL) {
+      if (this.previousState === GAME_STATES.PLAYING) {
+        this.renderPlaying();
+      } else {
+        this.renderChooseMap();
+      }
+      this.renderControlsModal();
     } else if (this.state === GAME_STATES.PLAYING) {
       this.renderPlaying();
     } else if (this.state === GAME_STATES.GAME_OVER) {
@@ -502,7 +576,7 @@ export class Game {
     ctx.restore();
   }
 
-  // Exact reproduction of Screenshot 1 (Main Menu)
+  // Exact reproduction of Screenshot 1 (Main Menu) with UI improvements
   renderMenu() {
     const ctx = this.ctx;
 
@@ -514,9 +588,9 @@ export class Game {
     ctx.fillStyle = '#62b6eb';
     ctx.globalAlpha = 0.55;
     for (let x = 60; x < this.width; x += 180) {
-      ctx.fillRect(x, 140, 60, 520);
-      ctx.fillRect(x - 12, 120, 84, 20);
-      ctx.fillRect(x - 20, 105, 100, 15);
+      ctx.fillRect(x, 140, 64, 520);
+      ctx.fillRect(x - 12, 120, 88, 20);
+      ctx.fillRect(x - 20, 105, 104, 15);
     }
     ctx.globalAlpha = 1.0;
 
@@ -529,7 +603,7 @@ export class Game {
     ctx.beginPath();
     ctx.moveTo(0, groundY);
     for (let x = 0; x <= this.width; x += 36) {
-      ctx.quadraticCurveTo(x + 18, groundY + 10, x + 36, groundY);
+      ctx.quadraticCurveTo(x + 18, groundY + 11, x + 36, groundY);
     }
     ctx.lineTo(this.width, groundY);
     ctx.lineTo(0, groundY);
@@ -538,10 +612,10 @@ export class Game {
     // 3. Environment Scenery
     // Left Tree
     ctx.fillStyle = '#9b1d60';
-    ctx.fillRect(100, groundY - 140, 30, 140);
+    ctx.fillRect(100, groundY - 140, 32, 140);
     ctx.fillStyle = '#00e676';
     ctx.beginPath();
-    ctx.roundRect(50, groundY - 230, 130, 110, 26);
+    ctx.roundRect(46, groundY - 235, 138, 115, 28);
     ctx.fill();
 
     // Orange Bounce Box on left
@@ -567,59 +641,112 @@ export class Game {
     ctx.save();
     ctx.fillStyle = '#e040fb';
     ctx.shadowColor = '#e040fb';
-    ctx.shadowBlur = 18;
+    ctx.shadowBlur = 20;
     ctx.beginPath();
-    ctx.arc(1110, groundY, 36, Math.PI, 0);
+    ctx.arc(1110, groundY, 38, Math.PI, 0);
     ctx.fill();
     ctx.fillStyle = '#ffffff';
-    ctx.globalAlpha = 0.8;
+    ctx.globalAlpha = 0.85;
     ctx.beginPath();
     ctx.arc(1110, groundY, 22, Math.PI, 0);
     ctx.fill();
     ctx.restore();
 
-    // Floating speed trail on right
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.beginPath();
-    ctx.arc(840, groundY - 20, 14, 0, Math.PI * 2);
-    ctx.arc(980, groundY - 110, 18, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 4. Center Purple Pillar (rounded container)
+    // 4. Center Purple Pillar
     const pillarX = 430;
-    const pillarY = 180;
+    const pillarY = 175;
     const pillarW = 420;
-    const pillarH = 480;
+    const pillarH = 485;
 
     ctx.fillStyle = '#a855f7';
     ctx.beginPath();
-    ctx.roundRect(pillarX, pillarY, pillarW, pillarH, [36, 36, 0, 0]);
+    ctx.roundRect(pillarX, pillarY, pillarW, pillarH, [40, 40, 0, 0]);
     ctx.fill();
 
     // 5. Three Big Menu Buttons:
     // 2 PLAYERS (Red)
     const isHover2 = this.hoveredButton === '2_players';
-    this.drawMenuButton(470, 230, 340, 72, '#e83a48', '2 PLAYERS', '#ffffff', isHover2);
+    this.drawMenuButton(460, 225, 360, 74, '#e83a48', '2 PLAYERS', '#ffffff', isHover2, 'WASD vs ARROWS');
 
     // 3 PLAYERS (Yellow)
     const isHover3 = this.hoveredButton === '3_players';
-    this.drawMenuButton(470, 325, 340, 72, '#ffd000', '3 PLAYERS', '#6a0dad', isHover3);
+    this.drawMenuButton(460, 320, 360, 74, '#ffd000', '3 PLAYERS', '#6a0dad', isHover3, '+ IJKL');
 
     // 4 PLAYERS (Green)
     const isHover4 = this.hoveredButton === '4_players';
-    this.drawMenuButton(470, 420, 340, 72, '#00c853', '4 PLAYERS', '#ffffff', isHover4);
+    this.drawMenuButton(460, 415, 360, 74, '#00c853', '4 PLAYERS', '#ffffff', isHover4, '+ TFGH');
+
+    // Single Keyboard Badge at bottom of pillar
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.beginPath();
+    ctx.roundRect(470, 505, 340, 40, 12);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 16px "Lilita One", cursive';
+    ctx.textAlign = 'center';
+    ctx.fillText('⌨ 1 KEYBOARD MULTIPLAYER', 640, 530);
 
     // 6. Huge 3D Cartoon Title: "TAG"
-    this.drawTitleTAG(640, 125);
+    const floatY = Math.sin(this.menuAnimTime * 1.5) * 6;
+    this.drawTitleTAG(640, 118 + floatY);
 
-    // 7. Top-Right Music Toggle Button
-    const isHoverAudio = this.hoveredButton === 'audio_btn';
-    this.drawAudioButton(1190, 25, 62, soundManager.musicEnabled, isHoverAudio);
+    // 7. Top-Right Action Buttons
+    this.drawTopButtons();
 
-    // 8. Animated Little Ninja Characters around the menu (Exact layout from Screenshot 1!)
+    // 8. Animated Little Ninja Characters around the menu
     this.renderMenuNinjas(groundY);
 
     this.particles.draw(ctx);
+  }
+
+  drawTopButtons() {
+    const ctx = this.ctx;
+
+    // 1. Audio toggle (x: 1200, y: 24)
+    this.drawIconButton(1200, 24, 56, '#38bdf8', '🎵', soundManager.musicEnabled, this.hoveredButton === 'audio_btn');
+
+    // 2. Controls toggle (x: 1130, y: 24)
+    this.drawIconButton(1130, 24, 56, '#9381ff', '⌨', true, this.hoveredButton === 'controls_btn');
+
+    // 3. Fullscreen toggle (x: 1060, y: 24)
+    this.drawIconButton(1060, 24, 56, '#06d6a0', '⛶', true, this.hoveredButton === 'fullscreen_btn');
+  }
+
+  drawIconButton(x, y, size, bgColor, icon, isEnabled = true, isHovered = false) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(x, y + (isHovered ? -2 : 0));
+
+    if (isHovered) {
+      ctx.shadowColor = 'rgba(255, 255, 255, 0.7)';
+      ctx.shadowBlur = 14;
+    }
+
+    ctx.fillStyle = isHovered ? '#ffffff' : bgColor;
+    ctx.beginPath();
+    ctx.roundRect(0, 0, size, size, 14);
+    ctx.fill();
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3.5;
+    ctx.stroke();
+
+    ctx.font = '26px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = isHovered ? bgColor : '#ffffff';
+    ctx.fillText(icon, size / 2, size / 2 + 1);
+
+    if (!isEnabled) {
+      ctx.strokeStyle = '#eb3b47';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(8, 8);
+      ctx.lineTo(size - 8, size - 8);
+      ctx.stroke();
+    }
+
+    ctx.restore();
   }
 
   drawTitleTAG(x, y) {
@@ -627,16 +754,16 @@ export class Game {
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '900 130px "Lilita One", "Fredoka", cursive';
+    ctx.font = '900 134px "Lilita One", "Fredoka", cursive';
 
-    // 3D Extruded Drop Shadow (Dark Navy / Black)
+    // 3D Extruded Drop Shadow
     ctx.fillStyle = '#151928';
-    for (let off = 12; off >= 1; off--) {
+    for (let off = 14; off >= 1; off--) {
       ctx.fillText('TAG', x, y + off);
     }
 
     // Thick Black Outline
-    ctx.lineWidth = 14;
+    ctx.lineWidth = 16;
     ctx.strokeStyle = '#151928';
     ctx.lineJoin = 'round';
     ctx.strokeText('TAG', x, y);
@@ -648,21 +775,27 @@ export class Game {
     ctx.restore();
   }
 
-  drawMenuButton(x, y, w, h, bgColor, text, textColor, isHovered) {
+  drawMenuButton(x, y, w, h, bgColor, text, textColor, isHovered, subtext = '') {
     const ctx = this.ctx;
     ctx.save();
-    const offsetY = isHovered ? -3 : 0;
+    const offsetY = isHovered ? -4 : 0;
     ctx.translate(x, y + offsetY);
 
     if (isHovered) {
-      ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
-      ctx.shadowBlur = 14;
+      ctx.shadowColor = 'rgba(255, 255, 255, 0.7)';
+      ctx.shadowBlur = 18;
     }
 
     // Button Background
     ctx.fillStyle = bgColor;
     ctx.beginPath();
-    ctx.roundRect(0, 0, w, h, 12);
+    ctx.roundRect(0, 0, w, h, 14);
+    ctx.fill();
+
+    // Subtle 3D bottom bevel
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
+    ctx.beginPath();
+    ctx.roundRect(0, h - 8, w, 8, [0, 0, 14, 14]);
     ctx.fill();
 
     // Text
@@ -672,51 +805,18 @@ export class Game {
 
     // Soft text shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-    ctx.fillText(text, w / 2, h / 2 + 3);
+    ctx.fillText(text, w / 2, h / 2 - (subtext ? 6 : 0) + 3);
 
     ctx.fillStyle = textColor;
-    ctx.fillText(text, w / 2, h / 2);
+    ctx.fillText(text, w / 2, h / 2 - (subtext ? 6 : 0));
 
-    ctx.restore();
-  }
-
-  drawAudioButton(x, y, size, isEnabled, isHovered) {
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.translate(x, y);
-
-    // Blue rounded box
-    ctx.fillStyle = isHovered ? '#60a5fa' : '#38bdf8';
-    ctx.beginPath();
-    ctx.roundRect(0, 0, size, size, 14);
-    ctx.fill();
-
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 4;
-    ctx.stroke();
-
-    // Musical eighth note icon
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    // Note head
-    ctx.ellipse(size / 2 - 4, size / 2 + 10, 6, 5, -0.3, 0, Math.PI * 2);
-    ctx.fill();
-    // Stem
-    ctx.fillRect(size / 2 + 1, size / 2 - 12, 4, 22);
-    // Flag
-    ctx.beginPath();
-    ctx.arc(size / 2 + 12, size / 2 - 4, 8, Math.PI, 0.4);
-    ctx.lineTo(size / 2 + 5, size / 2 - 4);
-    ctx.fill();
-
-    // If muted, draw diagonal red slash
-    if (!isEnabled) {
-      ctx.strokeStyle = '#eb3b47';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(10, 10);
-      ctx.lineTo(size - 10, size - 10);
-      ctx.stroke();
+    // Optional Key Hint Subtext
+    if (subtext) {
+      ctx.font = '900 13px "Lilita One", cursive';
+      ctx.fillStyle = textColor;
+      ctx.globalAlpha = 0.85;
+      ctx.fillText(subtext, w / 2, h / 2 + 18);
+      ctx.globalAlpha = 1.0;
     }
 
     ctx.restore();
@@ -738,10 +838,9 @@ export class Game {
     const ctx = this.ctx;
     const t = this.menuAnimTime;
 
-    // 1. Yellow Ninja (P3) falling from sky with speed streaks (Screenshot 1 top left)
+    // 1. Yellow Ninja (P3) falling from sky with speed streaks
     const yBob = Math.sin(t * 1.5) * 8;
     this.drawMiniNinja(ctx, 230, groundY - 140 + yBob, '#ffd000', 1, -0.2);
-    // Speed lines above yellow ninja
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -757,7 +856,6 @@ export class Game {
     // 3. Blue Ninja (P2) jumping near the pillar
     const blueJump = Math.abs(Math.sin(t * 2)) * 60;
     this.drawMiniNinja(ctx, 890, groundY - 35 - blueJump, '#38bdf8', -1, 0.1);
-    // Dust arc under jump
     if (blueJump < 10) {
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
       ctx.lineWidth = 2.5;
@@ -777,10 +875,9 @@ export class Game {
     ctx.rotate(tilt);
     ctx.scale(facing, 1);
 
-    const w = 42;
-    const h = 42;
+    const w = 44;
+    const h = 44;
 
-    // Body: Black rounded box with horns
     ctx.fillStyle = '#161922';
     ctx.beginPath();
     ctx.roundRect(-w / 2, -h / 2, w, h, 8);
@@ -801,8 +898,7 @@ export class Game {
 
     // Headband
     ctx.fillStyle = headbandColor;
-    ctx.fillRect(-w / 2 + 3, -10, w - 6, 8);
-    // Ribbon tails
+    ctx.fillRect(-w / 2 + 3, -10, w - 6, 9);
     ctx.beginPath();
     ctx.moveTo(-w / 2 + 4, -8);
     ctx.quadraticCurveTo(-w / 2 - 16, -10, -w / 2 - 22, -4);
@@ -813,22 +909,22 @@ export class Game {
     // Face: Large white oval eyes
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.ellipse(2, 0, 6, 8, 0, 0, Math.PI * 2);
-    ctx.ellipse(14, 0, 6, 8, 0, 0, Math.PI * 2);
+    ctx.ellipse(2, 0, 6.5, 8.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(15, 0, 6.5, 8.5, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Pupils
     ctx.fillStyle = '#161922';
     ctx.beginPath();
-    ctx.ellipse(3, 0, 3, 4, 0, 0, Math.PI * 2);
-    ctx.ellipse(15, 0, 3, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(3, 0, 3.2, 4.2, 0, 0, Math.PI * 2);
+    ctx.ellipse(16, 0, 3.2, 4.2, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Smile
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(8, 9, 3.5, 0.1 * Math.PI, 0.9 * Math.PI);
+    ctx.arc(8.5, 9, 3.5, 0.1 * Math.PI, 0.9 * Math.PI);
     ctx.stroke();
 
     ctx.restore();
@@ -846,7 +942,7 @@ export class Game {
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '900 84px "Lilita One", cursive';
+    ctx.font = '900 86px "Lilita One", cursive';
 
     // Shadow
     ctx.fillStyle = '#1f5380';
@@ -857,37 +953,23 @@ export class Game {
     ctx.fillText('CHOOSE MAP', this.width / 2, 100);
     ctx.restore();
 
-    // 3 Diorama Cards:
-    // 1. Forest Map Diorama
+    // 3 Diorama Cards
     const isHoverForest = this.hoveredButton === 'map_forest';
-    drawDiorama(ctx, 'forest', 130, 200, 310, 250, isHoverForest);
+    drawDiorama(ctx, 'forest', 125, 195, 310, 260, isHoverForest);
 
-    // 2. Winter Map Diorama
     const isHoverWinter = this.hoveredButton === 'map_winter';
-    drawDiorama(ctx, 'winter', 485, 200, 310, 250, isHoverWinter);
+    drawDiorama(ctx, 'winter', 485, 195, 310, 260, isHoverWinter);
 
-    // 3. Desert Map Diorama
     const isHoverDesert = this.hoveredButton === 'map_desert';
-    drawDiorama(ctx, 'desert', 840, 200, 310, 250, isHoverDesert);
+    drawDiorama(ctx, 'desert', 845, 195, 310, 260, isHoverDesert);
 
-    // Bottom Center: "GAME SETTINGS" Button
+    // Bottom Center 1: "GAME SETTINGS" Button
     const isHoverSettings = this.hoveredButton === 'open_settings';
-    ctx.save();
-    ctx.translate(510, 560);
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 4;
-    ctx.fillStyle = isHoverSettings ? 'rgba(255, 255, 255, 0.2)' : 'transparent';
-    ctx.beginPath();
-    ctx.roundRect(0, 0, 260, 56, 6);
-    ctx.fill();
-    ctx.stroke();
+    this.drawOutlinedButton(400, 570, 230, 56, 'GAME SETTINGS', isHoverSettings);
 
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '900 28px "Lilita One", cursive';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('GAME SETTINGS', 130, 28);
-    ctx.restore();
+    // Bottom Center 2: "KEYBOARD CONTROLS" Button
+    const isHoverControls = this.hoveredButton === 'controls_btn';
+    this.drawOutlinedButton(650, 570, 230, 56, '⌨ CONTROLS', isHoverControls);
 
     // Bottom Left: Back Button
     const isHoverBack = this.hoveredButton === 'back_to_menu';
@@ -901,7 +983,6 @@ export class Game {
     ctx.fill();
     ctx.stroke();
 
-    // Left arrow
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
     ctx.moveTo(42, 22);
@@ -910,30 +991,44 @@ export class Game {
     ctx.closePath();
     ctx.fill();
     ctx.restore();
+
+    // Top Right Buttons
+    this.drawTopButtons();
+  }
+
+  drawOutlinedButton(x, y, w, h, text, isHovered) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(x, y + (isHovered ? -3 : 0));
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 4;
+    ctx.fillStyle = isHovered ? 'rgba(255, 255, 255, 0.25)' : 'transparent';
+    ctx.beginPath();
+    ctx.roundRect(0, 0, w, h, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 24px "Lilita One", cursive';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, w / 2, h / 2);
+    ctx.restore();
   }
 
   // Exact reproduction of Screenshot 3 (Settings Modal)
   renderSettingsModal() {
     const ctx = this.ctx;
 
-    // Dark semi-transparent dim overlay
+    // Dark semi-transparent backdrop
     ctx.fillStyle = 'rgba(11, 26, 45, 0.82)';
     ctx.fillRect(0, 0, this.width, this.height);
 
-    // Ghost title behind modal
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = '900 84px "Lilita One", cursive';
-    ctx.fillStyle = 'rgba(30, 60, 85, 0.6)';
-    ctx.fillText('SETTINGS', this.width / 2, 130);
-    ctx.restore();
-
-    // Pink Rounded Box with thick 6px white border
-    const modalW = 520;
-    const modalH = 390;
+    // Pink Rounded Box
+    const modalW = 540;
+    const modalH = 410;
     const modalX = (this.width - modalW) / 2;
-    const modalY = (this.height - modalH) / 2 + 20;
+    const modalY = (this.height - modalH) / 2 + 15;
 
     ctx.save();
     ctx.translate(modalX, modalY);
@@ -949,31 +1044,33 @@ export class Game {
     ctx.lineWidth = 7;
     ctx.stroke();
 
-    // Option 1: BUFFS [ ON ] [ OFF ]
-    ctx.fillStyle = '#ffffff';
+    // Title: "SETTINGS"
     ctx.font = '900 44px "Lilita One", cursive';
-    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('BUFFS', 40, 80);
+    ctx.fillText('SETTINGS', modalW / 2, 42);
 
-    // BUFFS ON Button
+    // Option 1: BUFFS
+    ctx.font = '900 38px "Lilita One", cursive';
+    ctx.textAlign = 'left';
+    ctx.fillText('BUFFS', 50, 115);
+
     const buffsOn = this.settings.buffs;
-    this.drawSettingPill(ctx, 230, 52, 90, 56, 'ON', buffsOn, this.hoveredButton === 'buffs_on');
-    // BUFFS OFF Button
-    this.drawSettingPill(ctx, 350, 52, 90, 56, 'OFF', !buffsOn, this.hoveredButton === 'buffs_off');
+    this.drawSettingPill(ctx, 240, 88, 90, 56, 'ON', buffsOn, this.hoveredButton === 'buffs_on');
+    this.drawSettingPill(ctx, 350, 88, 90, 56, 'OFF', !buffsOn, this.hoveredButton === 'buffs_off');
 
-    // Option 2: TIME [ 60 ] [ 120 ] [ 180 ]
-    ctx.fillText('TIME', 40, 175);
+    // Option 2: TIME
+    ctx.fillText('TIME', 50, 205);
     const timeVal = this.settings.time;
-    this.drawSettingPill(ctx, 230, 147, 75, 56, '60', timeVal === 60, this.hoveredButton === 'time_60');
-    this.drawSettingPill(ctx, 320, 147, 85, 56, '120', timeVal === 120, this.hoveredButton === 'time_120');
-    this.drawSettingPill(ctx, 420, 147, 85, 56, '180', timeVal === 180, this.hoveredButton === 'time_180');
+    this.drawSettingPill(ctx, 240, 178, 80, 56, '60', timeVal === 60, this.hoveredButton === 'time_60');
+    this.drawSettingPill(ctx, 330, 178, 90, 56, '120', timeVal === 120, this.hoveredButton === 'time_120');
+    this.drawSettingPill(ctx, 430, 178, 90, 56, '180', timeVal === 180, this.hoveredButton === 'time_180');
 
     // Caption: "THE SETTINGS ARE SAVED AUTOMATICALLY"
     ctx.font = '800 16px "Lilita One", cursive';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText('THE SETTINGS ARE SAVED AUTOMATICALLY', modalW / 2, 255);
+    ctx.fillText('THE SETTINGS ARE SAVED AUTOMATICALLY', modalW / 2, 275);
 
     // CLOSE Button in White Outlined Box
     const isHoverClose = this.hoveredButton === 'close_settings';
@@ -981,14 +1078,134 @@ export class Game {
     ctx.lineWidth = 5;
     ctx.fillStyle = isHoverClose ? 'rgba(255, 255, 255, 0.25)' : 'transparent';
     ctx.beginPath();
-    ctx.roundRect(140, 290, 240, 60, 6);
+    ctx.roundRect(150, 315, 240, 60, 8);
     ctx.fill();
     ctx.stroke();
 
     ctx.font = '900 32px "Lilita One", cursive';
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText('CLOSE', modalW / 2, 320);
+    ctx.fillText('CLOSE', modalW / 2, 345);
 
+    ctx.restore();
+  }
+
+  // Keyboard Controls Guide Modal (for 1-Keyboard Local Multiplayer)
+  renderControlsModal() {
+    const ctx = this.ctx;
+
+    // Dark backdrop
+    ctx.fillStyle = 'rgba(11, 26, 45, 0.88)';
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    const modalW = 820;
+    const modalH = 490;
+    const modalX = (this.width - modalW) / 2;
+    const modalY = (this.height - modalH) / 2;
+
+    ctx.save();
+    ctx.translate(modalX, modalY);
+
+    // Purple / Indigo Box
+    ctx.fillStyle = '#6c5ce7';
+    ctx.beginPath();
+    ctx.roundRect(0, 0, modalW, modalH, 28);
+    ctx.fill();
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 7;
+    ctx.stroke();
+
+    // Title
+    ctx.font = '900 42px "Lilita One", cursive';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⌨ 1 KEYBOARD MULTIPLAYER CONTROLS', modalW / 2, 44);
+
+    // 4 Player Stations Cards
+    const cards = [
+      { id: 1, name: 'PLAYER 1', color: '#eb3b47', jump: 'W', left: 'A', down: 'S', right: 'D' },
+      { id: 2, name: 'PLAYER 2', color: '#38bdf8', jump: '▲', left: '◀', down: '▼', right: '▶' },
+      { id: 3, name: 'PLAYER 3', color: '#ffd000', jump: 'I', left: 'J', down: 'K', right: 'L' },
+      { id: 4, name: 'PLAYER 4', color: '#00c853', jump: 'T', left: 'F', down: 'G', right: 'H' }
+    ];
+
+    const cardW = 180;
+    const cardH = 260;
+    const startX = 35;
+
+    for (let i = 0; i < cards.length; i++) {
+      const c = cards[i];
+      const cx = startX + i * 190;
+      const cy = 90;
+
+      // Card Box
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.beginPath();
+      ctx.roundRect(cx, cy, cardW, cardH, 16);
+      ctx.fill();
+
+      ctx.strokeStyle = c.color;
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      // Header Tag
+      ctx.fillStyle = c.color;
+      ctx.beginPath();
+      ctx.roundRect(cx + 15, cy - 14, cardW - 30, 28, 8);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 15px "Lilita One", cursive';
+      ctx.fillText(c.name, cx + cardW / 2, cy);
+
+      // Key Layout Diagram (Jump on top, Left/Down/Right below)
+      this.drawKeyCap(ctx, cx + cardW / 2 - 22, cy + 45, 44, 40, c.jump);
+      this.drawKeyCap(ctx, cx + 18, cy + 95, 44, 40, c.left);
+      this.drawKeyCap(ctx, cx + cardW / 2 - 22, cy + 95, 44, 40, c.down);
+      this.drawKeyCap(ctx, cx + cardW - 62, cy + 95, 44, 40, c.right);
+
+      // Actions explanation
+      ctx.font = '800 13px "Lilita One", cursive';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(`▲ Jump: [${c.jump}]`, cx + cardW / 2, cy + 165);
+      ctx.fillText(`◀ ▶ Move: [${c.left}][${c.right}]`, cx + cardW / 2, cy + 195);
+      ctx.fillText(`▼ Drop: [${c.down}]`, cx + cardW / 2, cy + 225);
+    }
+
+    // CLOSE Button
+    const isHoverClose = this.hoveredButton === 'close_controls';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 4;
+    ctx.fillStyle = isHoverClose ? 'rgba(255, 255, 255, 0.25)' : 'transparent';
+    ctx.beginPath();
+    ctx.roundRect(modalW / 2 - 120, 395, 240, 56, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = '900 28px "Lilita One", cursive';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('GOT IT!', modalW / 2, 423);
+
+    ctx.restore();
+  }
+
+  drawKeyCap(ctx, x, y, w, h, keyText) {
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 6);
+    ctx.fill();
+
+    // 3D bottom bevel
+    ctx.fillStyle = '#cbd5e1';
+    ctx.beginPath();
+    ctx.roundRect(x, y + h - 5, w, 5, [0, 0, 6, 6]);
+    ctx.fill();
+
+    ctx.fillStyle = '#1e293b';
+    ctx.font = '900 18px "Lilita One", cursive';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(keyText, x + w / 2, y + h / 2 - 1);
     ctx.restore();
   }
 
@@ -996,7 +1213,7 @@ export class Game {
     ctx.save();
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 4;
-    ctx.fillStyle = isActive ? 'rgba(255, 255, 255, 0.35)' : (isHovered ? 'rgba(255, 255, 255, 0.15)' : 'transparent');
+    ctx.fillStyle = isActive ? 'rgba(255, 255, 255, 0.38)' : (isHovered ? 'rgba(255, 255, 255, 0.18)' : 'transparent');
     ctx.beginPath();
     ctx.roundRect(x, y, w, h, 14);
     ctx.fill();
@@ -1010,7 +1227,7 @@ export class Game {
     ctx.restore();
   }
 
-  // In-Game match rendering
+  // In-Game match rendering with complete HUD
   renderPlaying() {
     const ctx = this.ctx;
 
@@ -1022,37 +1239,58 @@ export class Game {
       this.drawBuffOrb(ctx, orb);
     }
 
-    // 3. Draw Players
+    // 3. Draw 100% Real Players
     for (const player of this.players) {
-      player.draw(ctx);
+      player.draw(ctx, this.players);
     }
 
     // 4. Draw Particles
     this.particles.draw(ctx);
 
-    // 5. Draw HUD (Top bar: Timer, Player slots, Menu icon)
+    // 5. Draw Enhanced HUD
     this.renderHUD(ctx);
 
-    // 6. Draw Countdown banner if not started
+    // 6. Draw Pre-Match Countdown with Player Key Guides!
     if (!this.isMatchStarted) {
-      ctx.save();
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-      ctx.fillRect(0, 0, this.width, this.height);
-
-      ctx.font = '900 120px "Lilita One", cursive';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#ffd000';
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 12;
-      ctx.strokeText(`${this.countdown}`, this.width / 2, this.height / 2 - 20);
-      ctx.fillText(`${this.countdown}`, this.width / 2, this.height / 2 - 20);
-
-      ctx.font = '900 36px "Lilita One", cursive';
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText('GET READY TO RUN!', this.width / 2, this.height / 2 + 70);
-      ctx.restore();
+      this.renderCountdownOverlay(ctx);
     }
+  }
+
+  renderCountdownOverlay(ctx) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    // Big 3D Countdown Number
+    ctx.font = '900 130px "Lilita One", cursive';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffd000';
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 14;
+    ctx.strokeText(`${this.countdown}`, this.width / 2, this.height / 2 - 40);
+    ctx.fillText(`${this.countdown}`, this.width / 2, this.height / 2 - 40);
+
+    ctx.font = '900 36px "Lilita One", cursive';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('GET READY TO RUN!', this.width / 2, this.height / 2 + 50);
+
+    // Key reminders under each player
+    for (const p of this.players) {
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.roundRect(p.x - 20, p.y + p.height + 14, p.width + 40, 28, 8);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 14px "Lilita One", cursive';
+      ctx.fillText(`${p.name}: ${p.label}`, p.x + p.width / 2, p.y + p.height + 28);
+    }
+
+    ctx.restore();
   }
 
   drawBuffOrb(ctx, orb) {
@@ -1060,18 +1298,15 @@ export class Game {
     const y = orb.y + Math.sin(orb.bob) * 6;
     ctx.translate(orb.x, y);
 
-    // Glow
     ctx.shadowColor = orb.type === 'speed' ? '#00e5ff' : (orb.type === 'jump' ? '#ffd000' : '#80d8ff');
-    ctx.shadowBlur = 14;
+    ctx.shadowBlur = 16;
 
-    // Circle
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(0, 0, 18, 0, Math.PI * 2);
+    ctx.arc(0, 0, 19, 0, Math.PI * 2);
     ctx.fill();
 
-    // Icon
-    ctx.font = '20px sans-serif';
+    ctx.font = '22px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const icon = orb.type === 'speed' ? '⚡' : (orb.type === 'jump' ? '🦘' : '❄️');
@@ -1083,62 +1318,82 @@ export class Game {
   renderHUD(ctx) {
     ctx.save();
 
-    // Top-Center Timer Pill
+    // Top-Center Round Timer Pill
     const min = Math.floor(this.roundTimer / 60);
     const sec = this.roundTimer % 60;
     const timeStr = `${min}:${sec < 10 ? '0' : ''}${sec}`;
 
     const isUrgent = this.roundTimer <= 10;
-    ctx.fillStyle = isUrgent ? '#ff1744' : 'rgba(0, 0, 0, 0.45)';
+    ctx.fillStyle = isUrgent ? '#ff1744' : 'rgba(0, 0, 0, 0.5)';
     ctx.beginPath();
-    ctx.roundRect(this.width / 2 - 70, 16, 140, 48, 24);
+    ctx.roundRect(this.width / 2 - 75, 14, 150, 52, 26);
     ctx.fill();
 
+    ctx.strokeStyle = isUrgent ? '#ffffff' : 'rgba(255, 255, 255, 0.4)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
     ctx.fillStyle = '#ffffff';
-    ctx.font = '900 32px "Lilita One", cursive';
+    ctx.font = '900 34px "Lilita One", cursive';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(timeStr, this.width / 2, 40);
 
-    // Top-Left Menu button
+    // Top-Left: Menu & Controls buttons
     const isHoverMenu = this.hoveredButton === 'ingame_menu';
-    ctx.fillStyle = isHoverMenu ? '#60a5fa' : 'rgba(0, 0, 0, 0.4)';
-    ctx.beginPath();
-    ctx.roundRect(20, 18, 50, 44, 10);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '900 24px "Lilita One", cursive';
-    ctx.fillText('◀', 45, 40);
+    this.drawHudButton(20, 16, 110, 48, '◀ MENU', isHoverMenu);
 
-    // Player Status Pills (Click to toggle Human/Bot)
+    const isHoverControls = this.hoveredButton === 'ingame_controls';
+    this.drawHudButton(140, 16, 110, 48, '⌨ KEYS', isHoverControls);
+
+    // Top-Right: Player Status Cards
     for (let i = 0; i < this.players.length; i++) {
       const p = this.players[i];
-      const x = 90 + i * 115;
-      const y = 20;
+      const cardX = 270 + i * 125;
+      const cardY = 16;
 
-      ctx.fillStyle = p.isIt ? '#ff1744' : p.color;
+      ctx.fillStyle = p.isIt ? '#ff1744' : 'rgba(0, 0, 0, 0.55)';
       ctx.beginPath();
-      ctx.roundRect(x, y, 105, 40, 10);
+      ctx.roundRect(cardX, cardY, 115, 48, 12);
       ctx.fill();
 
-      // Border if IT
-      if (p.isIt) {
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-      }
+      ctx.strokeStyle = p.isIt ? '#ffffff' : p.color;
+      ctx.lineWidth = p.isIt ? 3.5 : 2;
+      ctx.stroke();
 
+      // Player name & key bindings
       ctx.fillStyle = '#ffffff';
-      ctx.font = '900 15px "Lilita One", cursive';
+      ctx.font = '900 14px "Lilita One", cursive';
       ctx.textAlign = 'center';
-      const label = p.isIt ? 'IT!' : (p.isBot ? 'BOT' : 'YOU');
-      ctx.fillText(`P${p.id} ${label}`, x + 52, y + 21);
+      ctx.fillText(`P${p.id} ${p.isIt ? '🔥 IT!' : 'RUN!'}`, cardX + 57, cardY + 18);
+
+      ctx.font = '800 11px "Lilita One", cursive';
+      ctx.fillStyle = p.isIt ? '#ffebee' : p.color;
+      ctx.fillText(`[${p.label}]`, cardX + 57, cardY + 36);
     }
 
-    // Audio Button top right
-    this.drawAudioButton(1210, 16, 48, soundManager.musicEnabled, this.hoveredButton === 'audio_btn');
+    // Top Right: Audio Button
+    this.drawIconButton(1205, 14, 52, '#38bdf8', '🎵', soundManager.musicEnabled, this.hoveredButton === 'audio_btn');
 
     ctx.restore();
+  }
+
+  drawHudButton(x, y, w, h, text, isHovered) {
+    const ctx = this.ctx;
+    ctx.fillStyle = isHovered ? '#3b82f6' : 'rgba(0, 0, 0, 0.55)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 12);
+    ctx.fill();
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 16px "Lilita One", cursive';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x + w / 2, y + h / 2);
   }
 
   // Game Over Modal with Winner Podium
@@ -1146,38 +1401,38 @@ export class Game {
     const ctx = this.ctx;
 
     // Dark backdrop
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     ctx.fillRect(0, 0, this.width, this.height);
 
     ctx.save();
     ctx.textAlign = 'center';
 
     // Banner: "TIME'S UP!"
-    ctx.font = '900 78px "Lilita One", cursive';
+    ctx.font = '900 86px "Lilita One", cursive';
     ctx.fillStyle = '#ffd000';
     ctx.strokeStyle = '#111';
-    ctx.lineWidth = 10;
-    ctx.strokeText("TIME'S UP!", this.width / 2, 170);
-    ctx.fillText("TIME'S UP!", this.width / 2, 170);
+    ctx.lineWidth = 12;
+    ctx.strokeText("TIME'S UP!", this.width / 2, 160);
+    ctx.fillText("TIME'S UP!", this.width / 2, 160);
 
-    // Subtitle: Who got caught
+    // Subtitle: Caught Player
     const loser = this.players.find(p => p.id === this.loserId);
     if (loser) {
-      ctx.font = '900 32px "Lilita One", cursive';
+      ctx.font = '900 34px "Lilita One", cursive';
       ctx.fillStyle = '#ff4d6d';
-      ctx.fillText(`${loser.name} WAS CAUGHT!`, this.width / 2, 230);
+      ctx.fillText(`${loser.name} WAS CAUGHT!`, this.width / 2, 225);
     }
 
     // Surviving Winners
     ctx.font = '900 36px "Lilita One", cursive';
     ctx.fillStyle = '#00e676';
     const winnerNames = this.winners.map(w => w.name).join(', ');
-    ctx.fillText(`🎉 WINNERS: ${winnerNames}! 🎉`, this.width / 2, 310);
+    ctx.fillText(`🎉 WINNERS: ${winnerNames}! 🎉`, this.width / 2, 305);
 
     // Draw Winner Ninjas Celebrating
     for (let i = 0; i < this.winners.length; i++) {
       const w = this.winners[i];
-      const spacing = 100;
+      const spacing = 110;
       const startX = this.width / 2 - ((this.winners.length - 1) * spacing) / 2;
       const wx = startX + i * spacing;
       const bounce = Math.abs(Math.sin(Date.now() / 200 + i)) * 25;
@@ -1187,11 +1442,11 @@ export class Game {
     // Action Buttons:
     // PLAY AGAIN
     const isHoverPlay = this.hoveredButton === 'play_again';
-    this.drawMenuButton(420, 520, 200, 56, '#00c853', 'PLAY AGAIN', '#ffffff', isHoverPlay);
+    this.drawMenuButton(420, 530, 200, 58, '#00c853', 'PLAY AGAIN', '#ffffff', isHoverPlay);
 
     // CHOOSE MAP
     const isHoverMap = this.hoveredButton === 'change_map';
-    this.drawMenuButton(650, 520, 200, 56, '#38bdf8', 'CHOOSE MAP', '#ffffff', isHoverMap);
+    this.drawMenuButton(660, 530, 200, 58, '#38bdf8', 'CHOOSE MAP', '#ffffff', isHoverMap);
 
     ctx.restore();
   }

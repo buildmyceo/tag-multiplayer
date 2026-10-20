@@ -20,41 +20,31 @@ export const MAPS = {
       { x: 860, y: 260 }
     ],
 
-    // Solid obstacle blocks (impassable from all sides)
     solidBlocks: [
-      // Left pillar/block
       { x: 0, y: 0, width: 30, height: 720 },
       { x: 1250, y: 0, width: 30, height: 720 }
     ],
 
-    // Jump-through platforms (can jump up through or drop down)
     platforms: [
-      // Lower tiers
-      { x: 90, y: 510, width: 260, height: 16, color: '#f72585', topColor: '#00e676' },
-      { x: 930, y: 510, width: 260, height: 16, color: '#f72585', topColor: '#00e676' },
-      // Mid central platform
-      { x: 440, y: 440, width: 400, height: 18, color: '#f72585', topColor: '#00e676' },
-      // High left & right tiers
-      { x: 180, y: 290, width: 240, height: 16, color: '#f72585', topColor: '#00e676' },
-      { x: 860, y: 290, width: 240, height: 16, color: '#f72585', topColor: '#00e676' },
-      // Top central bird nest
-      { x: 500, y: 180, width: 280, height: 16, color: '#f72585', topColor: '#00e676' }
+      { x: 90, y: 510, width: 270, height: 18, color: '#f72585', topColor: '#00e676' },
+      { x: 920, y: 510, width: 270, height: 18, color: '#f72585', topColor: '#00e676' },
+      { x: 440, y: 440, width: 400, height: 20, color: '#f72585', topColor: '#00e676' },
+      { x: 180, y: 290, width: 240, height: 18, color: '#f72585', topColor: '#00e676' },
+      { x: 860, y: 290, width: 240, height: 18, color: '#f72585', topColor: '#00e676' },
+      { x: 500, y: 180, width: 280, height: 18, color: '#f72585', topColor: '#00e676' }
     ],
 
-    // Bounce pads (spring launchers)
     bouncePads: [
-      { x: 615, y: 640, width: 50, height: 20, color: '#ff8500', squash: 1 },
-      { x: 100, y: 490, width: 44, height: 18, color: '#ff8500', squash: 1 },
-      { x: 1136, y: 490, width: 44, height: 18, color: '#ff8500', squash: 1 }
+      { x: 615, y: 640, width: 52, height: 20, color: '#ff8500', squash: 1 },
+      { x: 100, y: 490, width: 46, height: 18, color: '#ff8500', squash: 1 },
+      { x: 1134, y: 490, width: 46, height: 18, color: '#ff8500', squash: 1 }
     ],
 
-    // Teleporter pairs (Portal A <-> Portal B)
     portals: [
-      { id: 'p1', targetId: 'p2', x: 200, y: 226, width: 44, height: 64, color: '#e040fb' },
-      { id: 'p2', targetId: 'p1', x: 1036, y: 226, width: 44, height: 64, color: '#e040fb' }
+      { id: 'p1', targetId: 'p2', x: 200, y: 226, width: 46, height: 64, color: '#e040fb' },
+      { id: 'p2', targetId: 'p1', x: 1034, y: 226, width: 46, height: 64, color: '#e040fb' }
     ],
 
-    // Background scenery decorations
     decorations: [
       { type: 'tree', x: 130, y: 370, scale: 1.1 },
       { type: 'tree', x: 1100, y: 370, scale: 1.1 },
@@ -74,7 +64,7 @@ export const MAPS = {
     skyColor: '#4895ef',
     pillarColor: '#72a1e5',
     groundColor: '#9381ff',
-    grassColor: '#f8f9fa', // snow
+    grassColor: '#ffffff', // snow
     ambientType: 'snow',
 
     spawns: [
@@ -90,23 +80,23 @@ export const MAPS = {
     ],
 
     platforms: [
-      { x: 120, y: 520, width: 280, height: 16, color: '#9381ff', topColor: '#ffffff' },
-      { x: 880, y: 520, width: 280, height: 16, color: '#9381ff', topColor: '#ffffff' },
-      { x: 440, y: 430, width: 400, height: 18, color: '#9381ff', topColor: '#ffffff' },
-      { x: 160, y: 280, width: 250, height: 16, color: '#9381ff', topColor: '#ffffff' },
-      { x: 870, y: 280, width: 250, height: 16, color: '#9381ff', topColor: '#ffffff' },
-      { x: 490, y: 190, width: 300, height: 16, color: '#9381ff', topColor: '#ffffff' }
+      { x: 120, y: 520, width: 280, height: 18, color: '#9381ff', topColor: '#ffffff' },
+      { x: 880, y: 520, width: 280, height: 18, color: '#9381ff', topColor: '#ffffff' },
+      { x: 440, y: 430, width: 400, height: 20, color: '#9381ff', topColor: '#ffffff' },
+      { x: 160, y: 280, width: 250, height: 18, color: '#9381ff', topColor: '#ffffff' },
+      { x: 870, y: 280, width: 250, height: 18, color: '#9381ff', topColor: '#ffffff' },
+      { x: 490, y: 190, width: 300, height: 18, color: '#9381ff', topColor: '#ffffff' }
     ],
 
     bouncePads: [
-      { x: 615, y: 640, width: 50, height: 20, color: '#ff4d6d', squash: 1 }, // Candy red bounce pad
-      { x: 140, y: 500, width: 44, height: 18, color: '#ff4d6d', squash: 1 },
-      { x: 1096, y: 500, width: 44, height: 18, color: '#ff4d6d', squash: 1 }
+      { x: 615, y: 640, width: 52, height: 20, color: '#ff4d6d', squash: 1 },
+      { x: 140, y: 500, width: 46, height: 18, color: '#ff4d6d', squash: 1 },
+      { x: 1094, y: 500, width: 46, height: 18, color: '#ff4d6d', squash: 1 }
     ],
 
     portals: [
-      { id: 'p1', targetId: 'p2', x: 200, y: 216, width: 44, height: 64, color: '#00f5d4' },
-      { id: 'p2', targetId: 'p1', x: 1036, y: 216, width: 44, height: 64, color: '#00f5d4' }
+      { id: 'p1', targetId: 'p2', x: 200, y: 216, width: 46, height: 64, color: '#00f5d4' },
+      { id: 'p2', targetId: 'p1', x: 1034, y: 216, width: 46, height: 64, color: '#00f5d4' }
     ],
 
     decorations: [
@@ -142,23 +132,23 @@ export const MAPS = {
     ],
 
     platforms: [
-      { x: 100, y: 500, width: 280, height: 16, color: '#f4a261', topColor: '#e9c46a' },
-      { x: 900, y: 500, width: 280, height: 16, color: '#f4a261', topColor: '#e9c46a' },
-      { x: 430, y: 440, width: 420, height: 18, color: '#f4a261', topColor: '#e9c46a' },
-      { x: 190, y: 290, width: 240, height: 16, color: '#f4a261', topColor: '#e9c46a' },
-      { x: 850, y: 290, width: 240, height: 16, color: '#f4a261', topColor: '#e9c46a' },
-      { x: 490, y: 180, width: 300, height: 16, color: '#f4a261', topColor: '#e9c46a' }
+      { x: 100, y: 500, width: 280, height: 18, color: '#f4a261', topColor: '#e9c46a' },
+      { x: 900, y: 500, width: 280, height: 18, color: '#f4a261', topColor: '#e9c46a' },
+      { x: 430, y: 440, width: 420, height: 20, color: '#f4a261', topColor: '#e9c46a' },
+      { x: 190, y: 290, width: 240, height: 18, color: '#f4a261', topColor: '#e9c46a' },
+      { x: 850, y: 290, width: 240, height: 18, color: '#f4a261', topColor: '#e9c46a' },
+      { x: 490, y: 180, width: 300, height: 18, color: '#f4a261', topColor: '#e9c46a' }
     ],
 
     bouncePads: [
-      { x: 615, y: 640, width: 50, height: 20, color: '#2a9d8f', squash: 1 },
-      { x: 120, y: 480, width: 44, height: 18, color: '#2a9d8f', squash: 1 },
-      { x: 1116, y: 480, width: 44, height: 18, color: '#2a9d8f', squash: 1 }
+      { x: 615, y: 640, width: 52, height: 20, color: '#2a9d8f', squash: 1 },
+      { x: 120, y: 480, width: 46, height: 18, color: '#2a9d8f', squash: 1 },
+      { x: 1114, y: 480, width: 46, height: 18, color: '#2a9d8f', squash: 1 }
     ],
 
     portals: [
-      { id: 'p1', targetId: 'p2', x: 220, y: 226, width: 44, height: 64, color: '#ffb703' },
-      { id: 'p2', targetId: 'p1', x: 1016, y: 226, width: 44, height: 64, color: '#ffb703' }
+      { id: 'p1', targetId: 'p2', x: 220, y: 226, width: 46, height: 64, color: '#ffb703' },
+      { id: 'p2', targetId: 'p1', x: 1014, y: 226, width: 46, height: 64, color: '#ffb703' }
     ],
 
     decorations: [
@@ -174,24 +164,23 @@ export const MAPS = {
 
 // Draw full interactive in-game map
 export function drawMap(ctx, map) {
-  // 1. Sky Background with soft architectural column silhouettes
+  // 1. Sky Background
   ctx.fillStyle = map.skyColor;
   ctx.fillRect(0, 0, map.width, map.height);
 
   // Background temple pillars
   ctx.fillStyle = map.pillarColor;
   ctx.globalAlpha = 0.45;
-  const colWidth = 60;
+  const colWidth = 64;
   const spacing = 180;
   for (let x = 60; x < map.width; x += spacing) {
     ctx.fillRect(x, 120, colWidth, 540);
-    // Capital top
     ctx.fillRect(x - 12, 100, colWidth + 24, 20);
     ctx.fillRect(x - 20, 85, colWidth + 40, 15);
   }
   ctx.globalAlpha = 1.0;
 
-  // 2. Map-Specific Scenery Decorations (Behind platforms)
+  // 2. Map-Specific Scenery Decorations
   for (const dec of map.decorations) {
     drawDecoration(ctx, dec);
   }
@@ -201,13 +190,13 @@ export function drawMap(ctx, map) {
   ctx.fillStyle = map.groundColor;
   ctx.fillRect(0, groundY, map.width, 60);
 
-  // Scalloped Grass Crest
+  // Scalloped Grass/Snow/Sand Crest
   ctx.fillStyle = map.grassColor;
   ctx.beginPath();
   ctx.moveTo(0, groundY);
   const scallopSize = 18;
   for (let x = 0; x <= map.width; x += scallopSize * 2) {
-    ctx.quadraticCurveTo(x + scallopSize, groundY + 8, x + scallopSize * 2, groundY);
+    ctx.quadraticCurveTo(x + scallopSize, groundY + 9, x + scallopSize * 2, groundY);
   }
   ctx.lineTo(map.width, groundY);
   ctx.lineTo(0, groundY);
@@ -215,6 +204,12 @@ export function drawMap(ctx, map) {
 
   // 4. Draw Platforms
   for (const p of map.platforms) {
+    // Drop shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+    ctx.beginPath();
+    ctx.roundRect(p.x, p.y + 4, p.width, p.height, 8);
+    ctx.fill();
+
     // Platform block
     ctx.fillStyle = p.color;
     ctx.beginPath();
@@ -243,7 +238,7 @@ export function drawMap(ctx, map) {
     ctx.fill();
 
     // Yellow diagonal warning chevron stripes
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
     ctx.beginPath();
     ctx.moveTo(pad.x + 10, currentY + currentHeight - 3);
     ctx.lineTo(pad.x + pad.width / 2, currentY + 4);
@@ -263,7 +258,7 @@ export function drawMap(ctx, map) {
 
     // Glowing aura
     ctx.shadowColor = portal.color;
-    ctx.shadowBlur = 16;
+    ctx.shadowBlur = 18;
 
     // Arch base
     ctx.fillStyle = portal.color;
@@ -275,11 +270,11 @@ export function drawMap(ctx, map) {
     ctx.fill();
 
     // Inner glowing swirl
-    const time = Date.now() / 300;
+    const time = Date.now() / 250;
     ctx.fillStyle = '#ffffff';
     ctx.globalAlpha = 0.75 + Math.sin(time * 3) * 0.2;
     ctx.beginPath();
-    ctx.ellipse(cx, cy, portal.width / 3.5, portal.height / 2.8, time, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy, portal.width / 3.2, portal.height / 2.6, time, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
@@ -291,10 +286,8 @@ function drawDecoration(ctx, dec) {
   ctx.save();
   if (dec.type === 'tree') {
     const s = dec.scale || 1;
-    // Purple trunk
     ctx.fillStyle = '#9b1d60';
     ctx.fillRect(dec.x - 8 * s, dec.y, 16 * s, 60 * s);
-    // Green blocky crown
     ctx.fillStyle = '#00e676';
     ctx.beginPath();
     ctx.roundRect(dec.x - 36 * s, dec.y - 50 * s, 72 * s, 60 * s, 16 * s);
@@ -309,21 +302,18 @@ function drawDecoration(ctx, dec) {
     ctx.arc(dec.x, dec.y, 2.5, 0, Math.PI * 2);
     ctx.fill();
   } else if (dec.type === 'snowman') {
-    // Snowman body
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(dec.x, dec.y + 26, 20, 0, Math.PI * 2); // bottom
-    ctx.arc(dec.x, dec.y, 14, 0, Math.PI * 2); // top
+    ctx.arc(dec.x, dec.y + 26, 20, 0, Math.PI * 2);
+    ctx.arc(dec.x, dec.y, 14, 0, Math.PI * 2);
     ctx.fill();
 
-    // Coal eyes & smile
     ctx.fillStyle = '#222222';
     ctx.beginPath();
     ctx.arc(dec.x - 4, dec.y - 2, 2, 0, Math.PI * 2);
     ctx.arc(dec.x + 4, dec.y - 2, 2, 0, Math.PI * 2);
     ctx.fill();
 
-    // Carrot nose
     ctx.fillStyle = '#ff7b00';
     ctx.beginPath();
     ctx.moveTo(dec.x, dec.y + 1);
@@ -331,17 +321,14 @@ function drawDecoration(ctx, dec) {
     ctx.lineTo(dec.x, dec.y + 5);
     ctx.fill();
 
-    // Red Scarf
     ctx.fillStyle = '#e63946';
     ctx.fillRect(dec.x - 12, dec.y + 8, 24, 6);
     ctx.fillRect(dec.x + 6, dec.y + 8, 6, 16);
 
-    // Black Top Hat
     ctx.fillStyle = '#1d2a44';
-    ctx.fillRect(dec.x - 14, dec.y - 12, 28, 4); // brim
-    ctx.fillRect(dec.x - 9, dec.y - 26, 18, 14); // crown
+    ctx.fillRect(dec.x - 14, dec.y - 12, 28, 4);
+    ctx.fillRect(dec.x - 9, dec.y - 26, 18, 14);
   } else if (dec.type === 'candycane') {
-    // Red & white candy cane
     ctx.strokeStyle = '#e63946';
     ctx.lineWidth = 8;
     ctx.lineCap = 'round';
@@ -351,7 +338,6 @@ function drawDecoration(ctx, dec) {
     ctx.arc(dec.x + 12, dec.y + 16, 12, Math.PI, 0);
     ctx.stroke();
 
-    // White stripes
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 4;
     ctx.stroke();
@@ -363,7 +349,6 @@ function drawDecoration(ctx, dec) {
     ctx.roundRect(dec.x - 30, dec.y - 45, 60, 50, 12);
     ctx.fill();
   } else if (dec.type === 'lights') {
-    // String of glowing fairy lights
     ctx.strokeStyle = '#333333';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -385,33 +370,24 @@ function drawDecoration(ctx, dec) {
       ctx.fill();
     }
   } else if (dec.type === 'sphinx') {
-    // Egyptian Sphinx Monument
     ctx.fillStyle = '#e9c46a';
     ctx.beginPath();
-    // Body base
     ctx.roundRect(dec.x - 40, dec.y + 15, 80, 45, 8);
-    // Head & Nemes headdress
     ctx.roundRect(dec.x - 22, dec.y - 20, 44, 40, 10);
     ctx.fill();
-    // Eyes
     ctx.fillStyle = '#9c6644';
     ctx.fillRect(dec.x - 12, dec.y - 8, 7, 4);
     ctx.fillRect(dec.x + 5, dec.y - 8, 7, 4);
   } else if (dec.type === 'cactus') {
-    // Saguaro cactus
     ctx.fillStyle = '#2a9d8f';
-    // Main stem
     ctx.beginPath();
     ctx.roundRect(dec.x - 8, dec.y - 30, 16, 60, 8);
-    // Left arm
     ctx.roundRect(dec.x - 22, dec.y - 12, 16, 8, 4);
     ctx.roundRect(dec.x - 22, dec.y - 26, 8, 16, 4);
-    // Right arm
     ctx.roundRect(dec.x + 6, dec.y - 4, 16, 8, 4);
     ctx.roundRect(dec.x + 14, dec.y - 18, 8, 16, 4);
     ctx.fill();
   } else if (dec.type === 'pyramid') {
-    // Mini pyramid
     ctx.fillStyle = '#e76f51';
     ctx.beginPath();
     ctx.moveTo(dec.x, dec.y - 28);
@@ -420,7 +396,6 @@ function drawDecoration(ctx, dec) {
     ctx.closePath();
     ctx.fill();
   } else if (dec.type === 'palmtree') {
-    // Palm tree
     ctx.strokeStyle = '#a68a64';
     ctx.lineWidth = 7;
     ctx.beginPath();
@@ -428,7 +403,6 @@ function drawDecoration(ctx, dec) {
     ctx.quadraticCurveTo(dec.x + 8, dec.y + 20, dec.x, dec.y);
     ctx.stroke();
 
-    // Green fronds
     ctx.fillStyle = '#2a9d8f';
     for (let a = -0.8; a <= 0.8; a += 0.4) {
       ctx.beginPath();
@@ -442,85 +416,89 @@ function drawDecoration(ctx, dec) {
 // Draw the 3 Diorama Cards for "CHOOSE MAP" matching Screenshot 2
 export function drawDiorama(ctx, mapId, x, y, width, height, isHovered) {
   ctx.save();
-  ctx.translate(x, y + (isHovered ? -8 : 0));
+  const offsetY = isHovered ? -10 : 0;
+  ctx.translate(x, y + offsetY);
+
+  // Soft base shadow
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+  ctx.beginPath();
+  ctx.ellipse(width / 2, height + 8, width * 0.45, 14, 0, 0, Math.PI * 2);
+  ctx.fill();
 
   if (isHovered) {
-    ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
-    ctx.shadowBlur = 18;
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.75)';
+    ctx.shadowBlur = 22;
   }
 
-  if (mapId === 'forest') {
-    // Forest Diorama: Pink pedestal with green top, 2 round trees, flowers
-    const pedHeight = 90;
-    const pedY = height - pedHeight;
+  const pedHeight = 96;
+  const pedY = height - pedHeight;
 
-    // Pink bedrock
+  if (mapId === 'forest') {
+    // 1. Forest Diorama
     ctx.fillStyle = '#f72585';
     ctx.beginPath();
-    ctx.roundRect(0, pedY, width, pedHeight, 18);
+    ctx.roundRect(0, pedY, width, pedHeight, 20);
     ctx.fill();
 
-    // Bright green scalloped grass top
+    // Grass top
     ctx.fillStyle = '#00e676';
     ctx.beginPath();
-    ctx.roundRect(0, pedY, width, 18, [18, 18, 4, 4]);
+    ctx.roundRect(0, pedY, width, 20, [20, 20, 4, 4]);
     ctx.fill();
 
-    // Scallops
+    // Grass scallops
     ctx.beginPath();
-    for (let sx = 0; sx <= width; sx += 20) {
-      ctx.arc(sx + 10, pedY + 16, 8, 0, Math.PI);
+    for (let sx = 0; sx <= width; sx += 22) {
+      ctx.arc(sx + 11, pedY + 18, 9, 0, Math.PI);
     }
     ctx.fill();
 
-    // Left tree
+    // Trees
     drawDioramaTree(ctx, 60, pedY - 30, '#9b1d60', '#00e676', 1);
-    // Right tree
-    drawDioramaTree(ctx, 190, pedY - 20, '#9b1d60', '#00e676', 1.15);
+    drawDioramaTree(ctx, 200, pedY - 20, '#9b1d60', '#00e676', 1.15);
 
     // Flowers
     drawDioramaFlower(ctx, 40, pedY, '#ffd000');
-    drawDioramaFlower(ctx, 120, pedY, '#eb3b5a');
-  } else if (mapId === 'winter') {
-    // Winter Diorama: Lavender bedrock, snowy top, snowman, candy cane, fairy lights, icy tree
-    const pedHeight = 90;
-    const pedY = height - pedHeight;
+    drawDioramaFlower(ctx, 130, pedY, '#eb3b5a');
 
-    // Lavender bedrock
+    // Title Badge
+    drawDioramaBadge(ctx, width / 2, pedY + 54, 'FOREST', '#f72585');
+  } else if (mapId === 'winter') {
+    // 2. Winter Diorama
     ctx.fillStyle = '#9381ff';
     ctx.beginPath();
-    ctx.roundRect(0, pedY, width, pedHeight, 18);
+    ctx.roundRect(0, pedY, width, pedHeight, 20);
     ctx.fill();
 
     // White snow top
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.roundRect(0, pedY, width, 18, [18, 18, 6, 6]);
+    ctx.roundRect(0, pedY, width, 20, [20, 20, 6, 6]);
     ctx.fill();
 
     // Snow mounds
     ctx.beginPath();
-    ctx.arc(width / 2, pedY + 8, 45, Math.PI, 0);
+    ctx.arc(width / 2, pedY + 10, 48, Math.PI, 0);
     ctx.fill();
 
-    // Snowman on left
+    // Snowman
     drawDioramaSnowman(ctx, 60, pedY - 14);
 
-    // Candy cane in center
+    // Candy cane
     drawDioramaCandyCane(ctx, 130, pedY - 10);
 
-    // Fairy lights garland string
+    // Fairy lights
     ctx.strokeStyle = '#333333';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(60, pedY - 6);
-    ctx.quadraticCurveTo(120, pedY + 8, 190, pedY - 6);
+    ctx.quadraticCurveTo(125, pedY + 8, 195, pedY - 6);
     ctx.stroke();
 
     const lightColors = ['#ff4d6d', '#ffd166', '#06d6a0', '#118ab2'];
     for (let i = 0; i < 7; i++) {
       const t = i / 6;
-      const lx = 60 + (190 - 60) * t;
+      const lx = 60 + (195 - 60) * t;
       const ly = (1 - t) * (1 - t) * (pedY - 6) + 2 * (1 - t) * t * (pedY + 8) + t * t * (pedY - 6);
       ctx.fillStyle = lightColors[i % lightColors.length];
       ctx.beginPath();
@@ -528,44 +506,65 @@ export function drawDiorama(ctx, mapId, x, y, width, height, isHovered) {
       ctx.fill();
     }
 
-    // Purple geometric tree on right
-    drawDioramaIceTree(ctx, 200, pedY - 24);
-  } else if (mapId === 'desert') {
-    // Desert Diorama: Golden sand bedrock, Sphinx, cactus, pyramid, palm tree
-    const pedHeight = 90;
-    const pedY = height - pedHeight;
+    // Ice Tree
+    drawDioramaIceTree(ctx, 210, pedY - 24);
 
-    // Golden sand bedrock
+    // Title Badge
+    drawDioramaBadge(ctx, width / 2, pedY + 54, 'WINTER', '#9381ff');
+  } else if (mapId === 'desert') {
+    // 3. Desert Diorama
     ctx.fillStyle = '#f4a261';
     ctx.beginPath();
-    ctx.roundRect(0, pedY, width, pedHeight, 18);
+    ctx.roundRect(0, pedY, width, pedHeight, 20);
     ctx.fill();
 
-    // Sand top strip
+    // Sand top
     ctx.fillStyle = '#e9c46a';
     ctx.beginPath();
-    ctx.roundRect(0, pedY, width, 18, [18, 18, 4, 4]);
+    ctx.roundRect(0, pedY, width, 20, [20, 20, 4, 4]);
     ctx.fill();
 
-    // Sphinx on left
-    drawDioramaSphinx(ctx, 75, pedY - 10);
+    // Sphinx
+    drawDioramaSphinx(ctx, 80, pedY - 10);
 
-    // Cactus in center
-    drawDioramaCactus(ctx, 140, pedY - 6);
+    // Cactus
+    drawDioramaCactus(ctx, 145, pedY - 6);
 
     // Mini pyramid
     ctx.fillStyle = '#e76f51';
     ctx.beginPath();
-    ctx.moveTo(175, pedY - 16);
-    ctx.lineTo(160, pedY);
-    ctx.lineTo(190, pedY);
+    ctx.moveTo(180, pedY - 18);
+    ctx.lineTo(165, pedY);
+    ctx.lineTo(195, pedY);
     ctx.closePath();
     ctx.fill();
 
-    // Palm tree on right
-    drawDioramaPalm(ctx, 215, pedY);
+    // Palm tree
+    drawDioramaPalm(ctx, 225, pedY);
+
+    // Title Badge
+    drawDioramaBadge(ctx, width / 2, pedY + 54, 'DESERT', '#f4a261');
   }
 
+  ctx.restore();
+}
+
+function drawDioramaBadge(ctx, x, y, text, color) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+  ctx.beginPath();
+  ctx.roundRect(x - 65, y - 16, 130, 32, 16);
+  ctx.fill();
+
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 18px "Lilita One", cursive';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
   ctx.restore();
 }
 
