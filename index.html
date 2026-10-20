@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+  <title>TAG - Multiplayer Party Game</title>
+  <meta name="description" content="Play the famous 2-4 player Tag game! Chase, jump, bounce on pads, use portals, and avoid being IT!">
+  <!-- Google Fonts for the exact bubbly cartoon fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700;800;900&family=Lilita+One&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <div id="game-wrapper">
+    <canvas id="game-canvas" width="1280" height="720"></canvas>
+    
+    <!-- Mobile/Touch Virtual D-Pad (Visible on mobile/touch devices or toggled) -->
+    <div id="touch-controls" class="touch-controls hidden">
+      <div class="touch-group touch-p1">
+        <div class="touch-btn touch-left" data-key="a">◀</div>
+        <div class="touch-btn touch-right" data-key="d">▶</div>
+        <div class="touch-btn touch-jump" data-key="w">▲</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
