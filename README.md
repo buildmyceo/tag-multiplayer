@@ -1,49 +1,67 @@
-# TAG - 2 to 4 Player Multiplayer Game (Single Keyboard)
+# TAG - 2 to 4 Player Multiplayer Game (Local & Online)
 
-An exact, high-fidelity recreation of the famous **Tag by WeLoPlay** party game, built with HTML5 Canvas, responsive 60fps physics, procedural Web Audio, and single-keyboard local multiplayer for 2, 3, or 4 players!
+An exact, high-fidelity recreation of the famous **Tag by WeLoPlay** party game, built with HTML5 Canvas, responsive 60fps physics, procedural Web Audio, and support for both **1-Keyboard Local Play** and **Multi-Device Online Multiplayer**!
 
 ---
 
-## 🎮 Keyboard Controls (All 4 Players on 1 Keyboard)
+## 🌐 Playing Online Across Other Devices (Phones, Tablets & PCs)
+
+You can play with friends across different devices on your local Wi-Fi or public network!
+
+### 1. Host Creates a Room:
+1. Open the game and click **`🌐 PLAY ONLINE`**.
+2. Click **`➕ CREATE A ROOM`**.
+3. Select your desired player count (2, 3, or 4 players) and map (Forest, Winter, Desert).
+4. You will get a 4-letter **Room Code** (e.g. `J7KP`).
+
+### 2. Friends Join from Other Devices:
+* On another phone, tablet, or PC on the same Wi-Fi network, navigate to:
+  **`http://192.168.1.192:5173/`**
+* Click **`🌐 PLAY ONLINE`** -> **`🔑 JOIN WITH ROOM CODE`** and enter the code.
+* Alternatively, share the direct link: **`http://192.168.1.192:5173/?room=J7KP`** to join automatically!
+* Once at least 2 players are in the lobby, the host clicks **`START MATCH!`** and the game starts in sync across all devices!
+
+---
+
+## 🎮 Single-Keyboard Local Controls (All 4 Players on 1 Keyboard)
+
+If you're playing locally on one PC, everyone can crowd around the same keyboard:
 
 | Player | Color | Left / Right | Jump | Drop Through Platforms |
 | :--- | :--- | :--- | :--- | :--- |
 | **Player 1** | 🔴 Red | `A` / `D` | `W` (or Space) | `S` |
-| **Player 2** | 🔵 Blue | `◀` / `▶` (Arrow Left / Right) | `▲` (Arrow Up) | `▼` (Arrow Down) |
+| **Player 2** | 🔵 Blue | `◀` / `▶` (Arrow Keys) | `▲` (Arrow Up) | `▼` (Arrow Down) |
 | **Player 3** | 🟡 Yellow | `J` / `L` | `I` | `K` |
 | **Player 4** | 🟢 Green | `F` / `H` | `T` | `G` |
 
-> [!TIP]
-> Press `⌨ KEYS` in-game or `⌨ CONTROLS` on the menu to pop up the on-screen keyboard layout diagram!
+*(In Online Mode, each player simply controls their own character with `WASD`, Arrow keys, or on-screen touch buttons!)*
 
 ---
 
 ## 🌟 Game Highlights
 
-1. **100% Single-Keyboard Multiplayer (No Bots)**:
-   * Play with 2, 3, or 4 friends crowding around a single laptop or PC keyboard!
-   * Simultaneous key press detection with `e.code` and `e.key` so ghosting and Shift/CapsLock keys never interrupt movement.
-   * Floating countdown player banners showing each player's exact keys before the match starts.
-2. **Visual & UI Enhancements**:
-   * **Main Menu:** Floating 3D extruded cartoon "TAG" title, central purple pillar with 2/3/4 Players buttons, animated ninja playground, orange bounce box, pink portal, and sound/fullscreen controls.
-   * **Choose Map Screen:** 3 interactive 3D diorama cards (Forest, Winter, Desert) with hover lift & glow, map title badges, "GAME SETTINGS" button, and "⌨ CONTROLS" button.
-   * **Settings Modal:** Exact pink dialog with thick 6px white border, BUFFS [ON][OFF] toggle, and TIME [60][120][180] selector.
-   * **In-Game HUD:** Centered round timer pill (urgent red pulse under 10s), top-left Menu & Keys buttons, player status cards with active role (`IT!` / `RUN!`) and key reminders.
-3. **Physics & Party Mechanics**:
-   * **Tag Transfer:** When "IT" touches another player, the role transfers instantly with comic starburst particles, screen rumble, and a 1.3-second immunity shield to prevent instant revenge tags!
-   * **Orange Bounce Pads:** Spring launch pads that compress and propel players high into the air.
-   * **Teleporter Portals:** Swirling warp portals that instantly transport players across the arena.
-   * **Buffs (when enabled):** Floating powerups including Speed Surge ⚡, Super Spring 🦘, and Freeze Ice ❄️.
-4. **Audio Engine**:
+1. **Realtime Online Multiplayer (WebSockets)**:
+   * Low-latency WebSocket synchronization between host and clients.
+   * Realtime position, velocity, and jump syncing.
+   * Synchronized "IT" tagging, comic starburst impacts, immunity cooldowns, and round countdowns.
+2. **Visual & UI Replication**:
+   * **Main Menu:** Floating 3D cartoon "TAG" title, central purple pillar with 2/3/4 Players and Online Play buttons, animated ninja playground.
+   * **Choose Map Screen:** 3 interactive 3D diorama cards (Forest, Winter, Desert).
+   * **Settings Modal:** Exact pink dialog with thick 6px border, BUFFS [ON][OFF] toggle, and TIME [60][120][180] selector.
+   * **In-Game HUD:** Centered timer pill (pulses red when <10s), player status badges (`IT!` / `RUN!`), sound and key helper buttons.
+3. **Audio Engine**:
    * Procedural Web Audio synthesizer (jump, boing, teleport whoosh, comic tag slap, countdown beeps, referee whistle, victory fanfare, and upbeat chiptune BGM).
 
 ---
 
-## 🚀 Running Locally
+## 🚀 Running the Game
 
+To start both the client and WebSocket server:
 ```bash
 npm install
-npm run dev
+npm run start
 ```
 
-Open your browser at: **[http://localhost:5173/](http://localhost:5173/)**
+Or individually:
+* Client: `npm run dev` (running on `http://localhost:5173/` and `http://192.168.1.192:5173/`)
+* Server: `npm run server` (WebSocket server on port `3001`)
