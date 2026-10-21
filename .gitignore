@@ -1,3 +1,6 @@
 node_modules
 dist
 .DS_Store
+map/
+public/originals/
+public/new_map.png

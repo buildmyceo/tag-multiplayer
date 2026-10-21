@@ -15,12 +15,15 @@
   <div id="game-wrapper">
     <canvas id="game-canvas" width="1280" height="720"></canvas>
     
-    <!-- Mobile/Touch Virtual D-Pad (Visible on mobile/touch devices or toggled) -->
+    <!-- Mobile/Touch Virtual D-Pad -->
     <div id="touch-controls" class="touch-controls hidden">
-      <div class="touch-group touch-p1">
-        <div class="touch-btn touch-left" data-key="a">◀</div>
-        <div class="touch-btn touch-right" data-key="d">▶</div>
-        <div class="touch-btn touch-jump" data-key="w">▲</div>
+      <div class="touch-group touch-left-group">
+        <button class="touch-btn touch-left" data-key="a" aria-label="Move Left">◀</button>
+        <button class="touch-btn touch-down" data-key="s" aria-label="Drop Down">▼</button>
+        <button class="touch-btn touch-right" data-key="d" aria-label="Move Right">▶</button>
+      </div>
+      <div class="touch-group touch-right-group">
+        <button class="touch-btn touch-jump" data-key="w" aria-label="Jump">▲ JUMP</button>
       </div>
     </div>
   </div>

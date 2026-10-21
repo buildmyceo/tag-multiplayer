@@ -3,8 +3,33 @@
 import { soundManager } from './audio.js';
 import { ParticleSystem } from './particles.js';
 import { Player } from './player.js';
-import { MAPS, drawMap, drawDiorama } from './maps.js';
+import { MAPS, drawMap, drawDiorama, clearCachedMap } from './maps.js';
 import { networkManager } from './network.js';
+
+// Preload uploaded official front page image with asynchronous decode
+const frontPageImg = new Image();
+frontPageImg.src = '/front_page.png';
+if (frontPageImg.decode) {
+  frontPageImg.decode().catch(() => {});
+}
+
+let cachedFrontPageCanvas = null;
+function getCachedFrontPage(img, width, height) {
+  if (cachedFrontPageCanvas) return cachedFrontPageCanvas;
+  if (!img || !img.complete || img.naturalWidth <= 0) return null;
+  try {
+    const offscreen = document.createElement('canvas');
+    offscreen.width = width;
+    offscreen.height = height;
+    const offCtx = offscreen.getContext('2d');
+    offCtx.drawImage(img, 0, 0, width, height);
+    cachedFrontPageCanvas = offscreen;
+    return cachedFrontPageCanvas;
+  } catch (e) {
+    cachedFrontPageCanvas = null;
+    return null;
+  }
+}
 
 export const GAME_STATES = {
   MENU: 'MENU',
@@ -34,7 +59,6 @@ export class Game {
 
     // Game Settings (persisted)
     this.settings = {
-      buffs: localStorage.getItem('tag_buffs') !== 'false',
       time: parseInt(localStorage.getItem('tag_time') || '60', 10),
       playerName: localStorage.getItem('tag_player_name') || 'Player 1'
     };
@@ -50,9 +74,10 @@ export class Game {
     this.countdownTimer = 180;
     this.isMatchStarted = false;
 
-    // Buff orbs in arena
-    this.buffOrbs = [];
-    this.buffSpawnTimer = 0;
+    // Dynamic 20s Random Portal System
+    this.portalActive = false;
+    this.portalSpawnTimer = 0;
+    this.portalDurationTimer = 0;
 
     // Multi-key tracking Set
     this.keys = new Set();
@@ -71,6 +96,12 @@ export class Game {
     this.menuAnimTime = 0;
     this.screenShake = 0;
 
+    // Bot AI & Toast state
+    this.botsEnabled = false;
+    this.isVsBot = false;
+    this.toastMessage = '';
+    this.toastTimer = 0;
+
     // Winner info
     this.loserId = null;
     this.winners = [];
@@ -80,20 +111,66 @@ export class Game {
     this.checkUrlDeepLink();
   }
 
+  rebindCanvas(newCanvas) {
+    this.canvas = newCanvas;
+    this.ctx = newCanvas.getContext('2d');
+    this.width = newCanvas.width;
+    this.height = newCanvas.height;
+    cachedFrontPageCanvas = null;
+    clearCachedMap();
+    this.initEventListeners();
+    this.render();
+  }
+
   initEventListeners() {
     window.addEventListener('keydown', e => {
       this.keys.add(e.key);
       this.keys.add(e.code);
       this.keys.add(e.key.toLowerCase());
-      soundManager.init();
+      try { soundManager.init(); } catch (err) {}
+
+      // Prevent window scrolling on arrow keys and space during gameplay
+      const scrollKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '];
+      if (scrollKeys.includes(e.key)) {
+        e.preventDefault();
+      }
 
       if (e.key === 'Escape') {
         if (this.state === GAME_STATES.SETTINGS || this.state === GAME_STATES.CONTROLS_MODAL) {
           this.state = this.previousState;
         } else if (this.state === GAME_STATES.PLAYING && this.gameMode === 'LOCAL') {
-          this.state = GAME_STATES.CHOOSE_MAP;
-        } else if (this.state === GAME_STATES.ONLINE_MENU || this.state === GAME_STATES.ONLINE_CREATE) {
           this.state = GAME_STATES.MENU;
+        } else if (this.state === GAME_STATES.CHOOSE_MAP || this.state === GAME_STATES.ONLINE_MENU || this.state === GAME_STATES.ONLINE_CREATE) {
+          this.state = GAME_STATES.MENU;
+        }
+      }
+
+      // Quick start shortcuts from Main Menu
+      if (this.state === GAME_STATES.MENU) {
+        if (e.key === '1') {
+          this.startLocalMatch('forest', 1, true);
+        } else if (e.key === '2') {
+          this.startLocalMatch('forest', 2, false);
+        } else if (e.key === '3') {
+          this.startLocalMatch('forest', 3, false);
+        } else if (e.key === '4') {
+          this.startLocalMatch('forest', 4, false);
+        } else if (e.code === 'Space' || e.code === 'Enter') {
+          this.startLocalMatch('forest', 1, true);
+        }
+      }
+
+      // Toggle Bot AI during in-game local match with 'B'
+      if (e.key === 'b' || e.key === 'B') {
+        if (this.state === GAME_STATES.PLAYING && this.gameMode === 'LOCAL') {
+          this.toggleBotMode();
+        }
+      }
+
+      // Enter or Space to start match on ARENA SELECT
+      if (e.code === 'Space' || e.code === 'Enter' || e.key === ' ' || e.key === 'Enter') {
+        if (this.state === GAME_STATES.CHOOSE_MAP) {
+          this.startLocalMatch('forest', this.playerCount, this.isVsBot);
         }
       }
     });
@@ -105,9 +182,10 @@ export class Game {
     });
 
     const updateMouse = e => {
+      if (!e) return;
       const rect = this.canvas.getBoundingClientRect();
-      const scaleX = this.width / rect.width;
-      const scaleY = this.height / rect.height;
+      const scaleX = rect.width ? this.width / rect.width : 1;
+      const scaleY = rect.height ? this.height / rect.height : 1;
       this.mouse.x = (e.clientX - rect.left) * scaleX;
       this.mouse.y = (e.clientY - rect.top) * scaleY;
     };
@@ -117,22 +195,36 @@ export class Game {
       this.checkHover();
     });
 
-    this.canvas.addEventListener('mousedown', e => {
-      updateMouse(e);
-      soundManager.init();
-      this.handleClick();
-    });
+    let lastClickTime = 0;
+    const triggerClickAction = e => {
+      const now = performance.now();
+      if (now - lastClickTime < 80) return;
+      lastClickTime = now;
 
-    this.canvas.addEventListener('touchstart', e => {
-      if (e.touches.length > 0) {
-        const touch = e.touches[0];
-        const rect = this.canvas.getBoundingClientRect();
-        this.mouse.x = (touch.clientX - rect.left) * (this.width / rect.width);
-        this.mouse.y = (touch.clientY - rect.top) * (this.height / rect.height);
+      if (e) updateMouse(e);
+      try {
         soundManager.init();
-        this.handleClick();
-      }
-    }, { passive: false });
+      } catch (err) {}
+      this.handleClick();
+    };
+
+    // Use pointerdown for instantaneous cross-device response
+    if (window.PointerEvent) {
+      this.canvas.addEventListener('pointerdown', e => {
+        triggerClickAction(e);
+      });
+    } else {
+      this.canvas.addEventListener('mousedown', triggerClickAction);
+      this.canvas.addEventListener('touchstart', e => {
+        if (e.touches && e.touches.length > 0) {
+          const touch = e.touches[0];
+          const rect = this.canvas.getBoundingClientRect();
+          this.mouse.x = (touch.clientX - rect.left) * (this.width / (rect.width || 1));
+          this.mouse.y = (touch.clientY - rect.top) * (this.height / (rect.height || 1));
+        }
+        triggerClickAction();
+      }, { passive: false });
+    }
   }
 
   // Network event callbacks
@@ -188,14 +280,14 @@ export class Game {
       }
     });
 
-    networkManager.on('buffSync', (data) => {
+    networkManager.on('portalUsedSync', () => {
       if (this.state !== GAME_STATES.PLAYING) return;
-      const targetP = this.players.find(p => p.id === data.playerId);
-      if (targetP) {
-        targetP.buff = data.buffType;
-        targetP.buffTimer = 360;
-      }
-      this.buffOrbs = this.buffOrbs.filter(o => o.id !== data.orbId);
+      this.consumePortals(false);
+    });
+
+    networkManager.on('portalsSpawnedSync', (data) => {
+      if (this.state !== GAME_STATES.PLAYING) return;
+      this.applyPortalsSpawned(data.portals);
     });
 
     networkManager.on('gameRestarted', (data) => {
@@ -219,100 +311,168 @@ export class Game {
   }
 
   saveSettings() {
-    localStorage.setItem('tag_buffs', this.settings.buffs);
     localStorage.setItem('tag_time', this.settings.time);
     localStorage.setItem('tag_player_name', this.settings.playerName);
   }
 
   toggleFullscreen() {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+    const doc = document;
+    const docEl = document.documentElement;
+    const isFullscreen = doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement;
+    if (!isFullscreen) {
+      if (docEl.requestFullscreen) {
+        docEl.requestFullscreen().catch(() => {});
+      } else if (docEl.webkitRequestFullscreen) {
+        docEl.webkitRequestFullscreen();
+      } else if (docEl.mozRequestFullScreen) {
+        docEl.mozRequestFullScreen();
+      }
     } else {
-      document.exitFullscreen().catch(() => {});
+      if (doc.exitFullscreen) {
+        doc.exitFullscreen().catch(() => {});
+      } else if (doc.webkitExitFullscreen) {
+        doc.webkitExitFullscreen();
+      } else if (doc.mozCancelFullScreen) {
+        doc.mozCancelFullScreen();
+      }
     }
   }
 
-  // Start 1-Keyboard Local Match
-  startLocalMatch(mapKey, playerCount) {
-    this.gameMode = 'LOCAL';
-    this.currentMapKey = mapKey;
-    this.currentMap = MAPS[mapKey] || MAPS.forest;
-    this.playerCount = playerCount;
+  // Start Local Match - Supports 1 Player (Vs Bot) and 2-4 Players (1-Keyboard)
+  startLocalMatch(mapKey, playerCount, isVsBot = false) {
+    try {
+      this.gameMode = 'LOCAL';
+      this.currentMapKey = mapKey || 'forest';
+      this.currentMap = MAPS[this.currentMapKey] || MAPS.forest;
 
-    this.roundTimer = this.settings.time;
-    this.roundTimerMs = this.settings.time * 1000;
-    this.countdown = 3;
-    this.countdownTimer = 180;
-    this.isMatchStarted = false;
-    this.buffOrbs = [];
-    this.buffSpawnTimer = 0;
-    this.loserId = null;
-    this.winners = [];
+      if (playerCount === 1) {
+        isVsBot = true;
+        this.playerCount = 2;
+      } else {
+        this.playerCount = Math.max(2, Math.min(4, playerCount || this.playerCount || 2));
+      }
+      this.isVsBot = isVsBot;
+      this.botsEnabled = isVsBot;
 
-    const configs = [
-      {
-        id: 1,
-        color: '#eb3b47',
-        name: 'Player 1',
-        label: 'W-A-S-D',
-        controls: {
-          leftKeys: ['a', 'A', 'KeyA'],
-          rightKeys: ['d', 'D', 'KeyD'],
-          jumpKeys: ['w', 'W', 'KeyW', ' '],
-          downKeys: ['s', 'S', 'KeyS']
+      const duration = Number(this.settings.time) || 60;
+      this.roundTimer = Math.max(10, duration);
+      this.roundTimerMs = this.roundTimer * 1000;
+      this.countdown = 3;
+      this.countdownTimer = 180;
+      this.isMatchStarted = false;
+
+      // Reset dynamic portals
+      this.currentMap.portals = [];
+      this.currentMap.onPortalUsed = (p1, p2) => this.consumePortals(true);
+      this.portalActive = false;
+      this.portalSpawnTimer = 0;
+      this.portalDurationTimer = 0;
+
+      this.loserId = null;
+      this.winners = [];
+
+      // Universal controls for Solo Player: accepts WASD, Arrow keys, Space
+      const soloControls = {
+        leftKeys: ['a', 'A', 'KeyA', 'arrowleft', 'ArrowLeft'],
+        rightKeys: ['d', 'D', 'KeyD', 'arrowright', 'ArrowRight'],
+        jumpKeys: ['w', 'W', 'KeyW', 'arrowup', 'ArrowUp', ' ', 'Space'],
+        downKeys: ['s', 'S', 'KeyS', 'arrowdown', 'ArrowDown']
+      };
+
+      const configs = [
+        {
+          id: 1,
+          color: '#eb3b47',
+          name: 'Player 1',
+          label: isVsBot ? 'WASD / ARROWS' : 'W-A-S-D',
+          controls: isVsBot ? soloControls : {
+            leftKeys: ['a', 'A', 'KeyA'],
+            rightKeys: ['d', 'D', 'KeyD'],
+            jumpKeys: ['w', 'W', 'KeyW', ' ', 'Space'],
+            downKeys: ['s', 'S', 'KeyS']
+          }
+        },
+        {
+          id: 2,
+          color: '#38bdf8',
+          name: isVsBot ? 'Ninja Bot 🤖' : 'Player 2',
+          label: isVsBot ? 'AI BOT' : 'ARROWS',
+          controls: {
+            leftKeys: ['arrowleft', 'ArrowLeft'],
+            rightKeys: ['arrowright', 'ArrowRight'],
+            jumpKeys: ['arrowup', 'ArrowUp'],
+            downKeys: ['arrowdown', 'ArrowDown']
+          }
+        },
+        {
+          id: 3,
+          color: '#ffd000',
+          name: isVsBot ? 'Ninja Bot 3 🤖' : 'Player 3',
+          label: isVsBot ? 'AI BOT' : 'I-J-K-L',
+          controls: {
+            leftKeys: ['j', 'J', 'KeyJ'],
+            rightKeys: ['l', 'L', 'KeyL'],
+            jumpKeys: ['i', 'I', 'KeyI'],
+            downKeys: ['k', 'K', 'KeyK']
+          }
+        },
+        {
+          id: 4,
+          color: '#00c853',
+          name: isVsBot ? 'Ninja Bot 4 🤖' : 'Player 4',
+          label: isVsBot ? 'AI BOT' : 'T-F-G-H',
+          controls: {
+            leftKeys: ['f', 'F', 'KeyF'],
+            rightKeys: ['h', 'H', 'KeyH'],
+            jumpKeys: ['t', 'T', 'KeyT'],
+            downKeys: ['g', 'G', 'KeyG']
+          }
         }
-      },
-      {
-        id: 2,
-        color: '#38bdf8',
-        name: 'Player 2',
-        label: 'ARROWS',
-        controls: {
-          leftKeys: ['arrowleft', 'ArrowLeft'],
-          rightKeys: ['arrowright', 'ArrowRight'],
-          jumpKeys: ['arrowup', 'ArrowUp'],
-          downKeys: ['arrowdown', 'ArrowDown']
-        }
-      },
-      {
-        id: 3,
-        color: '#ffd000',
-        name: 'Player 3',
-        label: 'I-J-K-L',
-        controls: {
-          leftKeys: ['j', 'J', 'KeyJ'],
-          rightKeys: ['l', 'L', 'KeyL'],
-          jumpKeys: ['i', 'I', 'KeyI'],
-          downKeys: ['k', 'K', 'KeyK']
-        }
-      },
-      {
-        id: 4,
-        color: '#00c853',
-        name: 'Player 4',
-        label: 'T-F-G-H',
-        controls: {
-          leftKeys: ['f', 'F', 'KeyF'],
-          rightKeys: ['h', 'H', 'KeyH'],
-          jumpKeys: ['t', 'T', 'KeyT'],
-          downKeys: ['g', 'G', 'KeyG']
+      ];
+
+      this.players = [];
+      for (let i = 0; i < this.playerCount; i++) {
+        const cfg = configs[i] || configs[0];
+        const spawn = (this.currentMap && this.currentMap.spawns && this.currentMap.spawns[i]) ? this.currentMap.spawns[i] : { x: 200 + i * 200, y: 500 };
+        const isBot = isVsBot ? (i > 0) : false;
+        const player = new Player(cfg.id, cfg.color, cfg.name, cfg.label, spawn.x, spawn.y, cfg.controls, false, isBot);
+        this.players.push(player);
+      }
+
+      if (this.players.length > 0) {
+        const itIndex = Math.floor(Math.random() * this.players.length);
+        if (this.players[itIndex]) {
+          this.players[itIndex].tag();
         }
       }
-    ];
 
-    this.players = [];
-    for (let i = 0; i < playerCount; i++) {
-      const cfg = configs[i];
-      const spawn = this.currentMap.spawns[i] || { x: 200 + i * 200, y: 500 };
-      const player = new Player(cfg.id, cfg.color, cfg.name, cfg.label, spawn.x, spawn.y, cfg.controls, false);
-      this.players.push(player);
+      this.state = GAME_STATES.PLAYING;
+      console.log('[TAG] Match started! Players:', this.playerCount, 'VsBot:', isVsBot, 'State:', this.state);
+      try {
+        soundManager.playCountdown();
+      } catch (e) {}
+    } catch (err) {
+      console.error('[TAG startLocalMatch error]:', err);
     }
+  }
 
-    const itIndex = Math.floor(Math.random() * playerCount);
-    this.players[itIndex].tag();
+  toggleBotMode() {
+    this.botsEnabled = !this.botsEnabled;
+    const defaultLabels = ['', 'WASD', 'ARROWS', 'I-J-K-L', 'T-F-G-H'];
+    for (const p of this.players) {
+      if (p.id > 1) {
+        p.isBot = this.botsEnabled;
+        p.name = this.botsEnabled ? `Ninja Bot ${p.id} 🤖` : `Player ${p.id}`;
+        p.label = this.botsEnabled ? 'AI BOT' : (defaultLabels[p.id] || 'KEYS');
+      }
+    }
+    soundManager.playClick();
+    this.showToast(this.botsEnabled ? '🤖 BOTS ACTIVATED!' : '👤 HUMAN 1-KEYBOARD MODE!');
+  }
 
-    this.state = GAME_STATES.PLAYING;
-    soundManager.playCountdown();
+  showToast(msg) {
+    this.toastMessage = msg;
+    this.toastTimer = 110;
   }
 
   // Start Online Match (Synced across devices)
@@ -327,8 +487,14 @@ export class Game {
     this.countdown = 3;
     this.countdownTimer = 180;
     this.isMatchStarted = false;
-    this.buffOrbs = [];
-    this.buffSpawnTimer = 0;
+
+    // Reset dynamic portals
+    this.currentMap.portals = [];
+    this.currentMap.onPortalUsed = (p1, p2) => this.consumePortals(true);
+    this.portalActive = false;
+    this.portalSpawnTimer = 0;
+    this.portalDurationTimer = 0;
+
     this.loserId = null;
     this.winners = [];
 
@@ -379,7 +545,7 @@ export class Game {
       maxPlayers,
       this.settings.playerName,
       this.settings.time,
-      this.settings.buffs
+      false
     );
   }
 
@@ -399,18 +565,18 @@ export class Game {
     this.hoveredButton = null;
 
     if (this.state === GAME_STATES.MENU) {
-      // Top buttons
-      if (mx >= 1200 && mx <= 1256 && my >= 24 && my <= 80) this.hoveredButton = 'audio_btn';
-      if (mx >= 1130 && mx <= 1186 && my >= 24 && my <= 80) this.hoveredButton = 'controls_btn';
-      if (mx >= 1060 && mx <= 1116 && my >= 24 && my <= 80) this.hoveredButton = 'fullscreen_btn';
+      // Top buttons on front_page.png
+      if (mx >= 14 && mx <= 106 && my >= 14 && my <= 90) this.hoveredButton = 'settings_btn';
+      if (mx >= 1036 && mx <= 1120 && my >= 14 && my <= 90) this.hoveredButton = 'fullscreen_btn';
+      if (mx >= 1120 && mx <= 1200 && my >= 14 && my <= 90) this.hoveredButton = 'sound_btn';
+      if (mx >= 1200 && mx <= 1276 && my >= 14 && my <= 90) this.hoveredButton = 'music_btn';
 
-      // Local Player Buttons
-      if (mx >= 460 && mx <= 820 && my >= 220 && my <= 286) this.hoveredButton = '2_players';
-      if (mx >= 460 && mx <= 820 && my >= 300 && my <= 366) this.hoveredButton = '3_players';
-      if (mx >= 460 && mx <= 820 && my >= 380 && my <= 446) this.hoveredButton = '4_players';
-
-      // 🌐 PLAY ONLINE Button
-      if (mx >= 460 && mx <= 820 && my >= 460 && my <= 526) this.hoveredButton = 'play_online';
+      // Main Menu 5 Choice Pills on front_page.png (X: 428 to 852)
+      if (mx >= 428 && mx <= 852 && my >= 300 && my <= 370) this.hoveredButton = '1_player';
+      if (mx >= 428 && mx <= 852 && my >= 374 && my <= 448) this.hoveredButton = '2_players';
+      if (mx >= 428 && mx <= 852 && my >= 454 && my <= 528) this.hoveredButton = '3_players';
+      if (mx >= 428 && mx <= 852 && my >= 534 && my <= 606) this.hoveredButton = '4_players';
+      if (mx >= 428 && mx <= 852 && my >= 612 && my <= 682) this.hoveredButton = 'play_online';
     } else if (this.state === GAME_STATES.ONLINE_MENU) {
       if (mx >= 380 && mx <= 900 && my >= 220 && my <= 300) this.hoveredButton = 'online_create';
       if (mx >= 380 && mx <= 900 && my >= 330 && my <= 410) this.hoveredButton = 'online_join';
@@ -421,11 +587,6 @@ export class Game {
       if (mx >= 540 && mx <= 640 && my >= 220 && my <= 280) this.hoveredButton = 'create_3p';
       if (mx >= 660 && mx <= 760 && my >= 220 && my <= 280) this.hoveredButton = 'create_4p';
 
-      // Choose Map: Forest, Winter, Desert
-      if (mx >= 350 && mx <= 490 && my >= 330 && my <= 390) this.hoveredButton = 'create_map_forest';
-      if (mx >= 510 && mx <= 650 && my >= 330 && my <= 390) this.hoveredButton = 'create_map_winter';
-      if (mx >= 670 && mx <= 810 && my >= 330 && my <= 390) this.hoveredButton = 'create_map_desert';
-
       // CREATE ROOM Button
       if (mx >= 460 && mx <= 760 && my >= 440 && my <= 510) this.hoveredButton = 'submit_create_room';
       if (mx >= 36 && mx <= 100 && my >= 620 && my <= 684) this.hoveredButton = 'back_to_online_menu';
@@ -435,15 +596,17 @@ export class Game {
       if (mx >= 36 && mx <= 100 && my >= 620 && my <= 684) this.hoveredButton = 'lobby_leave';
       if (mx >= 460 && mx <= 820 && my >= 550 && my <= 600) this.hoveredButton = 'copy_room_link';
     } else if (this.state === GAME_STATES.CHOOSE_MAP) {
-      if (mx >= 125 && mx <= 435 && my >= 185 && my <= 475) this.hoveredButton = 'map_forest';
-      if (mx >= 485 && mx <= 795 && my >= 185 && my <= 475) this.hoveredButton = 'map_winter';
-      if (mx >= 845 && mx <= 1155 && my >= 185 && my <= 475) this.hoveredButton = 'map_desert';
-      if (mx >= 400 && mx <= 630 && my >= 570 && my <= 626) this.hoveredButton = 'open_settings';
-      if (mx >= 650 && mx <= 880 && my >= 570 && my <= 626) this.hoveredButton = 'controls_btn';
-      if (mx >= 36 && mx <= 100 && my >= 620 && my <= 684) this.hoveredButton = 'back_to_menu';
+      // Top buttons
+      if (mx >= 1200 && mx <= 1256 && my >= 24 && my <= 80) this.hoveredButton = 'audio_btn';
+      if (mx >= 1130 && mx <= 1186 && my >= 24 && my <= 80) this.hoveredButton = 'controls_btn';
+      if (mx >= 1060 && mx <= 1116 && my >= 24 && my <= 80) this.hoveredButton = 'fullscreen_btn';
+
+      // Start Game Button + Official Arena Card (generous hit box for instant start)
+      if (mx >= 350 && mx <= 930 && my >= 120 && my <= 555) this.hoveredButton = 'map_forest';
+      if (mx >= 400 && mx <= 630 && my >= 565 && my <= 630) this.hoveredButton = 'open_settings';
+      if (mx >= 650 && mx <= 880 && my >= 565 && my <= 630) this.hoveredButton = 'controls_btn';
+      if (mx >= 36 && mx <= 100 && my >= 615 && my <= 685) this.hoveredButton = 'back_to_menu';
     } else if (this.state === GAME_STATES.SETTINGS) {
-      if (mx >= 600 && mx <= 690 && my >= 220 && my <= 276) this.hoveredButton = 'buffs_on';
-      if (mx >= 710 && mx <= 800 && my >= 220 && my <= 276) this.hoveredButton = 'buffs_off';
       if (mx >= 600 && mx <= 675 && my >= 310 && my <= 366) this.hoveredButton = 'time_60';
       if (mx >= 690 && mx <= 775 && my >= 310 && my <= 366) this.hoveredButton = 'time_120';
       if (mx >= 790 && mx <= 875 && my >= 310 && my <= 366) this.hoveredButton = 'time_180';
@@ -451,12 +614,17 @@ export class Game {
     } else if (this.state === GAME_STATES.CONTROLS_MODAL) {
       if (mx >= 520 && mx <= 760 && my >= 520 && my <= 580) this.hoveredButton = 'close_controls';
     } else if (this.state === GAME_STATES.PLAYING) {
-      if (mx >= 20 && mx <= 130 && my >= 18 && my <= 64) this.hoveredButton = 'ingame_menu';
-      if (mx >= 145 && mx <= 255 && my >= 18 && my <= 64) this.hoveredButton = 'ingame_controls';
-      if (mx >= 1205 && mx <= 1260 && my >= 18 && my <= 68) this.hoveredButton = 'audio_btn';
+      if (mx >= 20 && mx <= 130 && my >= 16 && my <= 64) this.hoveredButton = 'ingame_menu';
+      if (mx >= 140 && mx <= 250 && my >= 16 && my <= 64) this.hoveredButton = 'ingame_controls';
+      if (mx >= 720 && mx <= 880 && my >= 16 && my <= 64) this.hoveredButton = 'ingame_bot_toggle';
+      if (mx >= 1205 && mx <= 1260 && my >= 16 && my <= 68) this.hoveredButton = 'audio_btn';
     } else if (this.state === GAME_STATES.GAME_OVER) {
       if (mx >= 420 && mx <= 620 && my >= 530 && my <= 588) this.hoveredButton = 'play_again';
       if (mx >= 660 && mx <= 860 && my >= 530 && my <= 588) this.hoveredButton = 'change_map';
+    }
+
+    if (this.canvas && this.canvas.style) {
+      this.canvas.style.cursor = this.hoveredButton ? 'pointer' : 'default';
     }
   }
 
@@ -466,13 +634,26 @@ export class Game {
 
     soundManager.playClick();
 
-    if (this.hoveredButton === 'audio_btn') {
-      soundManager.toggleMusic();
+    if (this.hoveredButton === 'settings_btn') {
+      this.previousState = this.state;
+      this.state = GAME_STATES.SETTINGS;
       return;
     }
 
     if (this.hoveredButton === 'fullscreen_btn') {
       this.toggleFullscreen();
+      return;
+    }
+
+    if (this.hoveredButton === 'sound_btn') {
+      soundManager.toggleSound();
+      this.showToast(soundManager.soundEnabled ? '🔊 SOUND: ON' : '🔇 SOUND: MUTED');
+      return;
+    }
+
+    if (this.hoveredButton === 'music_btn' || this.hoveredButton === 'audio_btn') {
+      soundManager.toggleMusic();
+      this.showToast(soundManager.musicEnabled ? '🎵 MUSIC: ON' : '🎵 MUSIC: MUTED');
       return;
     }
 
@@ -483,15 +664,18 @@ export class Game {
     }
 
     if (this.state === GAME_STATES.MENU) {
-      if (this.hoveredButton === '2_players') {
+      if (this.hoveredButton === '1_player') {
+        this.playerCount = 1;
+        this.startLocalMatch('forest', 1, true);
+      } else if (this.hoveredButton === '2_players') {
         this.playerCount = 2;
-        this.state = GAME_STATES.CHOOSE_MAP;
+        this.startLocalMatch('forest', 2, false);
       } else if (this.hoveredButton === '3_players') {
         this.playerCount = 3;
-        this.state = GAME_STATES.CHOOSE_MAP;
+        this.startLocalMatch('forest', 3, false);
       } else if (this.hoveredButton === '4_players') {
         this.playerCount = 4;
-        this.state = GAME_STATES.CHOOSE_MAP;
+        this.startLocalMatch('forest', 4, false);
       } else if (this.hoveredButton === 'play_online') {
         this.state = GAME_STATES.ONLINE_MENU;
       }
@@ -509,12 +693,10 @@ export class Game {
       if (this.hoveredButton === 'create_2p') this.tempOnlinePlayers = 2;
       if (this.hoveredButton === 'create_3p') this.tempOnlinePlayers = 3;
       if (this.hoveredButton === 'create_4p') this.tempOnlinePlayers = 4;
-      if (this.hoveredButton === 'create_map_forest') this.tempOnlineMap = 'forest';
-      if (this.hoveredButton === 'create_map_winter') this.tempOnlineMap = 'winter';
-      if (this.hoveredButton === 'create_map_desert') this.tempOnlineMap = 'desert';
+      this.tempOnlineMap = 'forest';
 
       if (this.hoveredButton === 'submit_create_room') {
-        this.createOnlineRoom(this.tempOnlinePlayers || 2, this.tempOnlineMap || 'forest');
+        this.createOnlineRoom(this.tempOnlinePlayers || 2, 'forest');
       } else if (this.hoveredButton === 'back_to_online_menu') {
         this.state = GAME_STATES.ONLINE_MENU;
       }
@@ -534,12 +716,8 @@ export class Game {
         }).catch(() => {});
       }
     } else if (this.state === GAME_STATES.CHOOSE_MAP) {
-      if (this.hoveredButton === 'map_forest') {
+      if (this.hoveredButton === 'map_forest' || this.hoveredButton === 'start_match') {
         this.startLocalMatch('forest', this.playerCount);
-      } else if (this.hoveredButton === 'map_winter') {
-        this.startLocalMatch('winter', this.playerCount);
-      } else if (this.hoveredButton === 'map_desert') {
-        this.startLocalMatch('desert', this.playerCount);
       } else if (this.hoveredButton === 'open_settings') {
         this.previousState = this.state;
         this.state = GAME_STATES.SETTINGS;
@@ -547,13 +725,7 @@ export class Game {
         this.state = GAME_STATES.MENU;
       }
     } else if (this.state === GAME_STATES.SETTINGS) {
-      if (this.hoveredButton === 'buffs_on') {
-        this.settings.buffs = true;
-        this.saveSettings();
-      } else if (this.hoveredButton === 'buffs_off') {
-        this.settings.buffs = false;
-        this.saveSettings();
-      } else if (this.hoveredButton === 'time_60') {
+      if (this.hoveredButton === 'time_60') {
         this.settings.time = 60;
         this.saveSettings();
       } else if (this.hoveredButton === 'time_120') {
@@ -575,22 +747,24 @@ export class Game {
           networkManager.disconnect();
           this.state = GAME_STATES.ONLINE_MENU;
         } else {
-          this.state = GAME_STATES.CHOOSE_MAP;
+          this.state = GAME_STATES.MENU;
         }
+      } else if (this.hoveredButton === 'ingame_bot_toggle') {
+        this.toggleBotMode();
       }
     } else if (this.state === GAME_STATES.GAME_OVER) {
       if (this.hoveredButton === 'play_again') {
         if (this.gameMode === 'ONLINE') {
           networkManager.restartMatch();
         } else {
-          this.startLocalMatch(this.currentMapKey, this.playerCount);
+          this.startLocalMatch(this.currentMapKey, this.playerCount, this.isVsBot);
         }
       } else if (this.hoveredButton === 'change_map') {
         if (this.gameMode === 'ONLINE') {
           networkManager.disconnect();
           this.state = GAME_STATES.ONLINE_MENU;
         } else {
-          this.state = GAME_STATES.CHOOSE_MAP;
+          this.state = GAME_STATES.MENU;
         }
       }
     }
@@ -600,6 +774,13 @@ export class Game {
     this.particles.update();
     this.menuAnimTime += 0.045;
 
+    if (this.toastTimer > 0) {
+      this.toastTimer--;
+      if (this.toastTimer <= 0) {
+        this.toastMessage = '';
+      }
+    }
+
     if (this.screenShake > 0) {
       this.screenShake *= 0.88;
       if (this.screenShake < 0.2) this.screenShake = 0;
@@ -607,6 +788,8 @@ export class Game {
 
     if (this.state === GAME_STATES.PLAYING) {
       this.updatePlayingMatch();
+    } else if (this.state === GAME_STATES.MENU) {
+      this.particles.spawnAmbient('petals', this.width, this.height);
     }
   }
 
@@ -623,6 +806,11 @@ export class Game {
         this.isMatchStarted = true;
         soundManager.playWhistle();
         soundManager.startBGM();
+
+        const canManagePortals = (this.gameMode === 'LOCAL') || (this.gameMode === 'ONLINE' && networkManager.isHost);
+        if (canManagePortals) {
+          this.spawnRandomPortals();
+        }
       }
       return;
     }
@@ -655,7 +843,7 @@ export class Game {
       }
     }
 
-    // Tag Collision Check
+    // Tag Collision Check (adjusted for 34px player size)
     const itPlayer = this.players.find(p => p.isIt);
     if (itPlayer && !itPlayer.isImmune) {
       // In online mode, the player who is IT detects tags to avoid desync
@@ -669,15 +857,15 @@ export class Game {
           const dy = (target.y + target.height / 2) - (itPlayer.y + itPlayer.height / 2);
           const dist = Math.hypot(dx, dy);
 
-          if (dist < 40) {
+          if (dist < 32) {
             itPlayer.passTag();
             target.tag();
 
             soundManager.playTag();
             this.screenShake = 14;
 
-            const tagX = (itPlayer.x + target.x) / 2 + 23;
-            const tagY = (itPlayer.y + target.y) / 2 + 23;
+            const tagX = (itPlayer.x + target.x) / 2 + 17;
+            const tagY = (itPlayer.y + target.y) / 2 + 17;
             this.particles.createTagBurst(tagX, tagY);
 
             if (this.gameMode === 'ONLINE') {
@@ -689,52 +877,127 @@ export class Game {
       }
     }
 
-    // Buff Spawning Logic (Host in online mode or Local)
-    const canSpawnBuffs = (this.gameMode === 'LOCAL') || (this.gameMode === 'ONLINE' && networkManager.isHost);
-    if (this.settings.buffs && canSpawnBuffs) {
-      this.buffSpawnTimer++;
-      if (this.buffSpawnTimer > 380 && this.buffOrbs.length < 3) {
-        this.spawnBuffOrb();
-        this.buffSpawnTimer = 0;
-      }
-    }
-
-    // Check player collecting buff orb
-    for (let i = this.buffOrbs.length - 1; i >= 0; i--) {
-      const orb = this.buffOrbs[i];
-      orb.bob += 0.08;
-
-      for (const p of this.players) {
-        const dx = (p.x + p.width / 2) - orb.x;
-        const dy = (p.y + p.height / 2) - (orb.y + Math.sin(orb.bob) * 6);
-        if (Math.hypot(dx, dy) < 32) {
-          soundManager.playBuff();
-          this.particles.createTagBurst(orb.x, orb.y);
-          p.buff = orb.type;
-          p.buffTimer = 360;
-          this.buffOrbs.splice(i, 1);
-          if (this.gameMode === 'ONLINE') {
-            networkManager.sendBuffCollect(orb.id, p.id, orb.type);
-          }
-          break;
+    // Dynamic 20s Portal Loop (Host in online mode or Local)
+    const canManagePortals = (this.gameMode === 'LOCAL') || (this.gameMode === 'ONLINE' && networkManager.isHost);
+    if (canManagePortals) {
+      if (!this.portalActive) {
+        this.portalSpawnTimer--;
+        if (this.portalSpawnTimer <= 0) {
+          this.spawnRandomPortals();
+        }
+      } else {
+        // Portals active: if unused for 20s (1200 frames), randomly relocate them
+        this.portalDurationTimer--;
+        if (this.portalDurationTimer <= 0) {
+          this.spawnRandomPortals();
         }
       }
     }
   }
 
-  spawnBuffOrb() {
-    const types = ['speed', 'jump', 'freeze'];
-    const type = types[Math.floor(Math.random() * types.length)];
-    const platforms = this.currentMap.platforms;
-    const plat = platforms[Math.floor(Math.random() * platforms.length)];
+  // Generate pair of portals on two distinct platforms separated by distance
+  spawnRandomPortals() {
+    if (!this.currentMap || !this.currentMap.platforms) return;
 
-    this.buffOrbs.push({
-      id: Math.random().toString(36).substr(2, 9),
-      x: plat.x + Math.random() * (plat.width - 40) + 20,
-      y: plat.y - 30,
-      type: type,
-      bob: Math.random() * Math.PI * 2
-    });
+    // Filter platforms: elevated non-ground platforms wide enough for portal (above water)
+    const validPlatforms = this.currentMap.platforms.filter(p => !p.isGround && p.width >= 70 && p.y < 650);
+    if (validPlatforms.length < 2) return;
+
+    // Shuffle platforms
+    const shuffled = [...validPlatforms].sort(() => Math.random() - 0.5);
+
+    let platA = shuffled[0];
+    let platB = null;
+
+    for (let i = 1; i < shuffled.length; i++) {
+      const candidate = shuffled[i];
+      const dist = Math.hypot((candidate.x + candidate.width / 2) - (platA.x + platA.width / 2), candidate.y - platA.y);
+      if (dist >= 280) {
+        platB = candidate;
+        break;
+      }
+    }
+
+    if (!platB) {
+      platB = shuffled[1];
+    }
+
+    const portalW = 42;
+    const portalH = 50;
+
+    const xA = platA.x + Math.max(6, Math.min(platA.width - portalW - 6, (platA.width - portalW) / 2));
+    const yA = platA.y - portalH;
+
+    const xB = platB.x + Math.max(6, Math.min(platB.width - portalW - 6, (platB.width - portalW) / 2));
+    const yB = platB.y - portalH;
+
+    const portals = [
+      {
+        id: 'portal_a',
+        targetId: 'portal_b',
+        label: 'PORTAL A',
+        color: '#d946ef',
+        x: Math.round(xA),
+        y: Math.round(yA),
+        width: portalW,
+        height: portalH
+      },
+      {
+        id: 'portal_b',
+        targetId: 'portal_a',
+        label: 'PORTAL B',
+        color: '#06b6d4',
+        x: Math.round(xB),
+        y: Math.round(yB),
+        width: portalW,
+        height: portalH
+      }
+    ];
+
+    this.applyPortalsSpawned(portals);
+
+    if (this.gameMode === 'ONLINE' && networkManager.isHost) {
+      networkManager.sendPortalsSpawned(portals);
+    }
+  }
+
+  applyPortalsSpawned(portals) {
+    if (!this.currentMap) return;
+    this.currentMap.portals = portals;
+    this.portalActive = true;
+    this.portalDurationTimer = 20 * 60; // 20 seconds lifetime if unused
+    this.showToast('🌀 NEW PORTALS OPENED!');
+
+    for (const p of (portals || [])) {
+      if (this.particles) {
+        this.particles.createTeleportSwirl(p.x + p.width / 2, p.y + p.height / 2);
+      }
+    }
+    soundManager.playTeleport();
+  }
+
+  // Once used, portals disappear immediately and restart the 20-second timer
+  consumePortals(broadcast = true) {
+    if (!this.portalActive && (!this.currentMap.portals || this.currentMap.portals.length === 0)) return;
+
+    if (this.currentMap && this.currentMap.portals) {
+      for (const p of this.currentMap.portals) {
+        if (this.particles) {
+          this.particles.createTeleportSwirl(p.x + p.width / 2, p.y + p.height / 2);
+          this.particles.createTagBurst(p.x + p.width / 2, p.y + p.height / 2);
+        }
+      }
+      this.currentMap.portals = [];
+    }
+
+    this.portalActive = false;
+    this.portalSpawnTimer = 20 * 60; // 20s countdown before next portals spawn
+    this.portalDurationTimer = 0;
+    this.showToast('🌀 PORTAL USED! NEXT IN 20s');
+
+    if (broadcast && this.gameMode === 'ONLINE') {
+      networkManager.sendPortalUsed();
+    }
   }
 
   endMatch() {
@@ -753,6 +1016,7 @@ export class Game {
   render() {
     const ctx = this.ctx;
     ctx.save();
+    ctx.clearRect(0, 0, this.width, this.height);
 
     if (this.screenShake > 0) {
       const sx = (Math.random() - 0.5) * this.screenShake;
@@ -760,31 +1024,38 @@ export class Game {
       ctx.translate(sx, sy);
     }
 
-    if (this.state === GAME_STATES.MENU) {
-      this.renderMenu();
-    } else if (this.state === GAME_STATES.ONLINE_MENU) {
-      this.renderOnlineMenu();
-    } else if (this.state === GAME_STATES.ONLINE_CREATE) {
-      this.renderOnlineCreate();
-    } else if (this.state === GAME_STATES.ONLINE_LOBBY) {
-      this.renderOnlineLobby();
-    } else if (this.state === GAME_STATES.CHOOSE_MAP) {
-      this.renderChooseMap();
-    } else if (this.state === GAME_STATES.SETTINGS) {
-      this.renderChooseMap();
-      this.renderSettingsModal();
-    } else if (this.state === GAME_STATES.CONTROLS_MODAL) {
-      if (this.previousState === GAME_STATES.PLAYING) {
-        this.renderPlaying();
-      } else {
+    try {
+      if (this.state === GAME_STATES.MENU) {
+        this.renderMenu();
+      } else if (this.state === GAME_STATES.ONLINE_MENU) {
+        this.renderOnlineMenu();
+      } else if (this.state === GAME_STATES.ONLINE_CREATE) {
+        this.renderOnlineCreate();
+      } else if (this.state === GAME_STATES.ONLINE_LOBBY) {
+        this.renderOnlineLobby();
+      } else if (this.state === GAME_STATES.CHOOSE_MAP) {
         this.renderChooseMap();
+      } else if (this.state === GAME_STATES.SETTINGS) {
+        this.renderChooseMap();
+        this.renderSettingsModal();
+      } else if (this.state === GAME_STATES.CONTROLS_MODAL) {
+        if (this.previousState === GAME_STATES.PLAYING) {
+          this.renderPlaying();
+        } else {
+          this.renderChooseMap();
+        }
+        this.renderControlsModal();
+      } else if (this.state === GAME_STATES.PLAYING) {
+        this.renderPlaying();
+      } else if (this.state === GAME_STATES.GAME_OVER) {
+        this.renderPlaying();
+        this.renderGameOverModal();
       }
-      this.renderControlsModal();
-    } else if (this.state === GAME_STATES.PLAYING) {
-      this.renderPlaying();
-    } else if (this.state === GAME_STATES.GAME_OVER) {
-      this.renderPlaying();
-      this.renderGameOverModal();
+    } catch (e) {
+      console.error('[TAG render error]:', e);
+      if (typeof window.showErrorOverlay === 'function') {
+        window.showErrorOverlay('Render Error: ' + (e.stack || e.message));
+      }
     }
 
     ctx.restore();
@@ -793,118 +1064,121 @@ export class Game {
   renderMenu() {
     const ctx = this.ctx;
 
-    // 1. Sky Background
-    ctx.fillStyle = '#3ea5e6';
-    ctx.fillRect(0, 0, this.width, this.height);
-
-    ctx.fillStyle = '#62b6eb';
-    ctx.globalAlpha = 0.55;
-    for (let x = 60; x < this.width; x += 180) {
-      ctx.fillRect(x, 140, 64, 520);
-      ctx.fillRect(x - 12, 120, 88, 20);
-      ctx.fillRect(x - 20, 105, 104, 15);
+    // 1. Draw Official Front Page Artwork (Cached offscreen canvas for 60fps)
+    let bgDrawn = false;
+    const cached = getCachedFrontPage(frontPageImg, this.width, this.height);
+    if (cached) {
+      try {
+        ctx.drawImage(cached, 0, 0, this.width, this.height);
+        bgDrawn = true;
+      } catch (e) {
+        cachedFrontPageCanvas = null;
+      }
     }
-    ctx.globalAlpha = 1.0;
-
-    // 2. Pink Ground & Scalloped Grass
-    const groundY = this.height - 65;
-    ctx.fillStyle = '#f72585';
-    ctx.fillRect(0, groundY, this.width, 65);
-
-    ctx.fillStyle = '#00e676';
-    ctx.beginPath();
-    ctx.moveTo(0, groundY);
-    for (let x = 0; x <= this.width; x += 36) {
-      ctx.quadraticCurveTo(x + 18, groundY + 11, x + 36, groundY);
+    
+    if (!bgDrawn && frontPageImg.complete && frontPageImg.naturalWidth > 0) {
+      try {
+        ctx.drawImage(frontPageImg, 0, 0, this.width, this.height);
+        bgDrawn = true;
+      } catch (e) {}
     }
-    ctx.lineTo(this.width, groundY);
-    ctx.lineTo(0, groundY);
-    ctx.fill();
 
-    // 3. Environment Scenery
-    ctx.fillStyle = '#9b1d60';
-    ctx.fillRect(100, groundY - 140, 32, 140);
-    ctx.fillStyle = '#00e676';
-    ctx.beginPath();
-    ctx.roundRect(46, groundY - 235, 138, 115, 28);
-    ctx.fill();
+    if (!bgDrawn) {
+      ctx.fillStyle = '#3ea5e6';
+      ctx.fillRect(0, 0, this.width, this.height);
+    }
 
-    ctx.fillStyle = '#ff9100';
-    ctx.beginPath();
-    ctx.roundRect(320, groundY - 60, 56, 60, 8);
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(330, groundY - 20);
-    ctx.lineTo(348, groundY - 45);
-    ctx.lineTo(366, groundY - 20);
-    ctx.stroke();
+    // 2. Interactive Button Hover Glows (Highlights exactly over front_page.png buttons)
+    const buttonCoords = {
+      '1_player': { x: 432, y: 304, w: 416, h: 64 },
+      '2_players': { x: 432, y: 378, w: 416, h: 68 },
+      '3_players': { x: 432, y: 458, w: 416, h: 68 },
+      '4_players': { x: 432, y: 538, w: 416, h: 66 },
+      'play_online': { x: 432, y: 614, w: 416, h: 66 }
+    };
 
-    this.drawSimpleFlower(200, groundY - 6, '#ffd000');
-    this.drawSimpleFlower(420, groundY - 6, '#eb3b5a');
-    this.drawSimpleFlower(900, groundY - 6, '#ffd000');
-    this.drawSimpleFlower(1200, groundY - 6, '#eb3b5a');
+    const b = buttonCoords[this.hoveredButton];
+    if (b) {
+      ctx.save();
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 18;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3.5;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+      ctx.beginPath();
+      ctx.roundRect(b.x, b.y, b.w, b.h, 28);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
 
-    ctx.save();
-    ctx.fillStyle = '#e040fb';
-    ctx.shadowColor = '#e040fb';
-    ctx.shadowBlur = 20;
-    ctx.beginPath();
-    ctx.arc(1110, groundY, 38, Math.PI, 0);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.globalAlpha = 0.85;
-    ctx.beginPath();
-    ctx.arc(1110, groundY, 22, Math.PI, 0);
-    ctx.fill();
-    ctx.restore();
+    // Top action buttons hover glow
+    const topButtons = {
+      'settings_btn': { x: 18, y: 16, w: 86, h: 72 },
+      'fullscreen_btn': { x: 1040, y: 16, w: 78, h: 72 },
+      'sound_btn': { x: 1120, y: 16, w: 78, h: 72 },
+      'music_btn': { x: 1200, y: 16, w: 72, h: 72 }
+    };
+    const tb = topButtons[this.hoveredButton];
+    if (tb) {
+      ctx.save();
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 14;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.beginPath();
+      ctx.roundRect(tb.x, tb.y, tb.w, tb.h, 16);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
 
-    // 4. Center Purple Pillar
-    const pillarX = 430;
-    const pillarY = 175;
-    const pillarW = 420;
-    const pillarH = 485;
+    // 3. Status Badges for Sound & Music if muted
+    if (!soundManager.soundEnabled) {
+      ctx.save();
+      ctx.strokeStyle = '#ff1744';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(1136, 30);
+      ctx.lineTo(1182, 74);
+      ctx.stroke();
+      ctx.restore();
+    }
 
-    ctx.fillStyle = '#a855f7';
-    ctx.beginPath();
-    ctx.roundRect(pillarX, pillarY, pillarW, pillarH, [40, 40, 0, 0]);
-    ctx.fill();
+    if (!soundManager.musicEnabled) {
+      ctx.save();
+      ctx.strokeStyle = '#ff1744';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(1216, 30);
+      ctx.lineTo(1258, 74);
+      ctx.stroke();
+      ctx.restore();
+    }
 
-    // 5. Menu Buttons:
-    // 2 PLAYERS (Red)
-    const isHover2 = this.hoveredButton === '2_players';
-    this.drawMenuButton(460, 220, 360, 66, '#e83a48', '2 PLAYERS', '#ffffff', isHover2, '1-Keyboard');
-
-    // 3 PLAYERS (Yellow)
-    const isHover3 = this.hoveredButton === '3_players';
-    this.drawMenuButton(460, 300, 360, 66, '#ffd000', '3 PLAYERS', '#6a0dad', isHover3, '1-Keyboard');
-
-    // 4 PLAYERS (Green)
-    const isHover4 = this.hoveredButton === '4_players';
-    this.drawMenuButton(460, 380, 360, 66, '#00c853', '4 PLAYERS', '#ffffff', isHover4, '1-Keyboard');
-
-    // 🌐 PLAY ONLINE (Cyan / Blue Gradient)
-    const isHoverOnline = this.hoveredButton === 'play_online';
-    this.drawMenuButton(460, 460, 360, 66, '#06d6a0', '🌐 PLAY ONLINE', '#ffffff', isHoverOnline, 'Multi-Device Rooms');
-
-    // Network Status Note
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '800 13px "Lilita One", cursive';
-    ctx.textAlign = 'center';
-    ctx.fillText('⚡ Play together across phones, tablets & PCs', 640, 550);
-
-    // 6. Huge 3D Cartoon Title: "TAG"
-    const floatY = Math.sin(this.menuAnimTime * 1.5) * 6;
-    this.drawTitleTAG(640, 118 + floatY);
-
-    // 7. Top-Right Action Buttons
-    this.drawTopButtons();
-
-    // 8. Animated Little Ninjas
-    this.renderMenuNinjas(groundY);
-
+    // 4. Ambient Floating Petals / Sparkles
     this.particles.draw(ctx);
+
+    // 5. Toast Notification
+    if (this.toastTimer > 0 && this.toastMessage) {
+      ctx.save();
+      ctx.font = '900 20px "Lilita One", cursive';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const alpha = Math.min(1, this.toastTimer / 20);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      ctx.beginPath();
+      ctx.roundRect(this.width / 2 - 160, 246, 320, 42, 12);
+      ctx.fill();
+      ctx.strokeStyle = '#ffd000';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(this.toastMessage, this.width / 2, 267);
+      ctx.restore();
+    }
   }
 
   // 🌐 Online Play Hub Screen
@@ -974,11 +1248,8 @@ export class Game {
     this.drawSettingPill(ctx, 660, 215, 100, 60, '4', pCount === 4, this.hoveredButton === 'create_4p');
 
     // Row 2: Map Selection
-    ctx.fillText('SELECT ARENA MAP:', this.width / 2, 315);
-    const selMap = this.tempOnlineMap || 'forest';
-    this.drawSettingPill(ctx, 350, 340, 140, 56, 'FOREST', selMap === 'forest', this.hoveredButton === 'create_map_forest');
-    this.drawSettingPill(ctx, 510, 340, 140, 56, 'WINTER', selMap === 'winter', this.hoveredButton === 'create_map_winter');
-    this.drawSettingPill(ctx, 670, 340, 140, 56, 'DESERT', selMap === 'desert', this.hoveredButton === 'create_map_desert');
+    ctx.fillText('ARENA MAP:', this.width / 2, 315);
+    this.drawSettingPill(ctx, 470, 340, 340, 56, 'OFFICIAL MAP 1', true, false);
 
     // Submit Button
     const isHoverSubmit = this.hoveredButton === 'submit_create_room';
@@ -994,7 +1265,20 @@ export class Game {
     ctx.fillStyle = '#2b6cb0';
     ctx.fillRect(0, 0, this.width, this.height);
 
-    if (!this.onlineRoom) return;
+    if (!this.onlineRoom) {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '900 36px "Lilita One", cursive';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('CONNECTING TO ONLINE LOBBY...', this.width / 2, this.height / 2 - 20);
+      ctx.font = '800 18px "Lilita One", cursive';
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillText('Please wait a moment...', this.width / 2, this.height / 2 + 25);
+      ctx.restore();
+      this.drawBackButton('back_to_online_menu');
+      return;
+    }
 
     ctx.save();
     ctx.textAlign = 'center';
@@ -1344,22 +1628,29 @@ export class Game {
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '900 86px "Lilita One", cursive';
+    ctx.font = '900 78px "Lilita One", cursive';
 
     ctx.fillStyle = '#1f5380';
-    ctx.fillText('CHOOSE MAP', this.width / 2, 105);
+    ctx.fillText('ARENA SELECT', this.width / 2, 85);
     ctx.fillStyle = '#ffffff';
-    ctx.fillText('CHOOSE MAP', this.width / 2, 100);
+    ctx.fillText('ARENA SELECT', this.width / 2, 80);
     ctx.restore();
 
     const isHoverForest = this.hoveredButton === 'map_forest';
-    drawDiorama(ctx, 'forest', 125, 195, 310, 260, isHoverForest);
+    // Single Prominent Centered Official Arena Card
+    drawDiorama(ctx, 'forest', 390, 135, 500, 300, isHoverForest);
 
-    const isHoverWinter = this.hoveredButton === 'map_winter';
-    drawDiorama(ctx, 'winter', 485, 195, 310, 260, isHoverWinter);
+    // Big Green Bouncing START MATCH Button
+    const btnBob = isHoverForest ? -4 : 0;
+    this.drawMenuButton(460, 460 + btnBob, 360, 72, '#00c853', '▶ START MATCH', '#ffffff', isHoverForest);
 
-    const isHoverDesert = this.hoveredButton === 'map_desert';
-    drawDiorama(ctx, 'desert', 845, 195, 310, 260, isHoverDesert);
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '700 15px "Lilita One", cursive';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.fillText('Press SPACE, ENTER or Click to start match', this.width / 2, 546);
+    ctx.restore();
 
     const isHoverSettings = this.hoveredButton === 'open_settings';
     this.drawOutlinedButton(400, 570, 230, 56, 'GAME SETTINGS', isHoverSettings);
@@ -1421,11 +1712,8 @@ export class Game {
 
     ctx.font = '900 38px "Lilita One", cursive';
     ctx.textAlign = 'left';
-    ctx.fillText('BUFFS', 50, 115);
-
-    const buffsOn = this.settings.buffs;
-    this.drawSettingPill(ctx, 240, 88, 90, 56, 'ON', buffsOn, this.hoveredButton === 'buffs_on');
-    this.drawSettingPill(ctx, 350, 88, 90, 56, 'OFF', !buffsOn, this.hoveredButton === 'buffs_off');
+    ctx.fillText('PORTALS', 50, 115);
+    this.drawSettingPill(ctx, 240, 88, 180, 56, '20s RANDOM', true, false);
 
     ctx.fillText('TIME', 50, 205);
     const timeVal = this.settings.time;
@@ -1447,6 +1735,7 @@ export class Game {
     ctx.stroke();
 
     ctx.font = '900 32px "Lilita One", cursive';
+    ctx.fillStyle = '#ffffff';
     ctx.fillText('CLOSE', modalW / 2, 345);
 
     ctx.restore();
@@ -1582,21 +1871,58 @@ export class Game {
   renderPlaying() {
     const ctx = this.ctx;
 
-    drawMap(ctx, this.currentMap);
-
-    for (const orb of this.buffOrbs) {
-      this.drawBuffOrb(ctx, orb);
+    try {
+      drawMap(ctx, this.currentMap);
+    } catch (e) {
+      console.warn('drawMap error:', e);
     }
 
-    for (const player of this.players) {
-      player.draw(ctx, this.players);
+
+    try {
+      for (const player of (this.players || [])) {
+        player.draw(ctx, this.players);
+      }
+    } catch (e) {
+      console.warn('player draw error:', e);
     }
 
-    this.particles.draw(ctx);
-    this.renderHUD(ctx);
+    try {
+      this.particles.draw(ctx);
+    } catch (e) {}
+
+    try {
+      this.renderHUD(ctx);
+    } catch (e) {
+      console.warn('renderHUD error:', e);
+    }
+
+    if (this.toastTimer > 0 && this.toastMessage) {
+      try {
+        ctx.save();
+        ctx.font = '900 22px "Lilita One", cursive';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const alpha = Math.min(1, this.toastTimer / 20);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
+        ctx.beginPath();
+        ctx.roundRect(this.width / 2 - 180, 80, 360, 44, 12);
+        ctx.fill();
+        ctx.strokeStyle = '#ffd000';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(this.toastMessage, this.width / 2, 102);
+        ctx.restore();
+      } catch (e) {}
+    }
 
     if (!this.isMatchStarted) {
-      this.renderCountdownOverlay(ctx);
+      try {
+        this.renderCountdownOverlay(ctx);
+      } catch (e) {
+        console.warn('renderCountdownOverlay error:', e);
+      }
     }
   }
 
@@ -1616,7 +1942,7 @@ export class Game {
 
     ctx.font = '900 36px "Lilita One", cursive';
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(this.gameMode === 'ONLINE' ? 'ONLINE MATCH STARTING!' : 'GET READY TO RUN!', this.width / 2, this.height / 2 + 50);
+    ctx.fillText(this.gameMode === 'ONLINE' ? 'ONLINE MATCH STARTING!' : (this.isVsBot ? 'SOLO VS BOT MATCH!' : 'GET READY TO RUN!'), this.width / 2, this.height / 2 + 50);
 
     for (const p of this.players) {
       ctx.fillStyle = p.color;
@@ -1635,27 +1961,6 @@ export class Game {
     ctx.restore();
   }
 
-  drawBuffOrb(ctx, orb) {
-    ctx.save();
-    const y = orb.y + Math.sin(orb.bob) * 6;
-    ctx.translate(orb.x, y);
-
-    ctx.shadowColor = orb.type === 'speed' ? '#00e5ff' : (orb.type === 'jump' ? '#ffd000' : '#80d8ff');
-    ctx.shadowBlur = 16;
-
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(0, 0, 19, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.font = '22px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const icon = orb.type === 'speed' ? '⚡' : (orb.type === 'jump' ? '🦘' : '❄️');
-    ctx.fillText(icon, 0, 2);
-
-    ctx.restore();
-  }
 
   renderHUD(ctx) {
     ctx.save();
@@ -1685,6 +1990,13 @@ export class Game {
 
     const isHoverControls = this.hoveredButton === 'ingame_controls';
     this.drawHudButton(140, 16, 110, 48, '⌨ KEYS', isHoverControls);
+
+    // Bot AI Toggle in Local matches
+    if (this.gameMode === 'LOCAL') {
+      const isHoverBot = this.hoveredButton === 'ingame_bot_toggle';
+      const botText = this.botsEnabled ? '🤖 BOTS: ON' : '👤 BOTS: OFF';
+      this.drawHudButton(725, 16, 145, 48, botText, isHoverBot);
+    }
 
     // Player Status Cards
     for (let i = 0; i < this.players.length; i++) {

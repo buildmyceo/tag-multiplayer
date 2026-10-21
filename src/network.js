@@ -139,6 +139,14 @@ export class NetworkManager {
           this.emit('buffSync', msg);
           break;
 
+        case 'PORTAL_USED_SYNC':
+          this.emit('portalUsedSync', msg);
+          break;
+
+        case 'PORTALS_SPAWNED_SYNC':
+          this.emit('portalsSpawnedSync', msg);
+          break;
+
         case 'GAME_RESTARTED':
           this.emit('gameRestarted', msg);
           break;
@@ -200,6 +208,7 @@ export class NetworkManager {
       runCycle: player.runCycle,
       isIt: player.isIt,
       isImmune: player.isImmune,
+      inWater: player.inWater,
       buff: player.buff
     });
   }
@@ -220,6 +229,21 @@ export class NetworkManager {
       orbId,
       playerId,
       buffType
+    });
+  }
+
+  sendPortalUsed(portalId, targetId) {
+    this.send({
+      type: 'PORTAL_USED',
+      portalId,
+      targetId
+    });
+  }
+
+  sendPortalsSpawned(portals) {
+    this.send({
+      type: 'PORTALS_SPAWNED',
+      portals
     });
   }
 

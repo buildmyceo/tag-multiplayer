@@ -193,6 +193,7 @@ wss.on('connection', (ws) => {
           isGrounded: data.isGrounded,
           isIt: data.isIt,
           isImmune: data.isImmune,
+          inWater: data.inWater,
           runCycle: data.runCycle,
           buff: data.buff
         }, ws);
@@ -213,7 +214,7 @@ wss.on('connection', (ws) => {
         });
       }
 
-      // Buff pickup sync
+      // Buff pickup sync (legacy support)
       else if (data.type === 'BUFF_COLLECT') {
         if (!currentRoomCode) return;
         const room = rooms.get(currentRoomCode);
@@ -224,6 +225,31 @@ wss.on('connection', (ws) => {
           orbId: data.orbId,
           playerId: data.playerId,
           buffType: data.buffType
+        });
+      }
+
+      // Portal used sync (portal pair disappears and restarts 20s cooldown)
+      else if (data.type === 'PORTAL_USED') {
+        if (!currentRoomCode) return;
+        const room = rooms.get(currentRoomCode);
+        if (!room) return;
+
+        broadcastToRoom(room, {
+          type: 'PORTAL_USED_SYNC',
+          portalId: data.portalId,
+          targetId: data.targetId
+        });
+      }
+
+      // Dynamic Portals Spawn sync
+      else if (data.type === 'PORTALS_SPAWNED') {
+        if (!currentRoomCode) return;
+        const room = rooms.get(currentRoomCode);
+        if (!room) return;
+
+        broadcastToRoom(room, {
+          type: 'PORTALS_SPAWNED_SYNC',
+          portals: data.portals
         });
       }
 

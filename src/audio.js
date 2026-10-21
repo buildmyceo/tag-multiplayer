@@ -1,295 +1,317 @@
 // Procedural Web Audio API sound and music synthesizer
+// Hardened for Safari WebKit & Chrome with zero-deadlock, auto-cleanup, and latencyHint: 'playback'
 
 class SoundManager {
   constructor() {
     this.ctx = null;
+    this.available = true;
     this.soundEnabled = true;
     this.musicEnabled = true;
     this.bgmTimer = null;
     this.bgmStep = 0;
     this.isPlayingBGM = false;
+    this.activeVoices = 0;
+    this.MAX_VOICES = 8;
 
     // Load sound preference from localStorage
-    const savedMusic = localStorage.getItem('tag_music_enabled');
-    if (savedMusic !== null) {
-      this.musicEnabled = savedMusic === 'true';
-    }
+    try {
+      const savedMusic = localStorage.getItem('tag_music_enabled');
+      if (savedMusic !== null) {
+        this.musicEnabled = savedMusic === 'true';
+      }
+      const savedSound = localStorage.getItem('tag_sound_enabled');
+      if (savedSound !== null) {
+        this.soundEnabled = savedSound === 'true';
+      }
+    } catch (e) {}
+  }
+
+  toggleSound() {
+    this.soundEnabled = !this.soundEnabled;
+    try {
+      localStorage.setItem('tag_sound_enabled', this.soundEnabled);
+    } catch (e) {}
+    return this.soundEnabled;
   }
 
   init() {
-    if (!this.ctx) {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      this.ctx = new AudioContext();
-    }
-    if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
+    if (!this.available) return;
+    try {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) {
+          this.available = false;
+          return;
+        }
+        // latencyHint: 'playback' strictly prevents WebKit from requesting AUVoiceIO / Microphone / TCC
+        this.ctx = new AudioCtx({ latencyHint: 'playback' });
+      }
+
+      if (this.ctx && this.ctx.state === 'suspended') {
+        const p = this.ctx.resume();
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.warn('[SoundManager] AudioContext init warning:', e);
+      // Soft-disable audio without throwing or hanging
+      this.available = false;
     }
   }
 
   toggleMusic() {
-    this.init();
-    this.musicEnabled = !this.musicEnabled;
-    localStorage.setItem('tag_music_enabled', this.musicEnabled);
-    if (this.musicEnabled) {
-      this.startBGM();
-    } else {
-      this.stopBGM();
-    }
+    try {
+      this.init();
+      this.musicEnabled = !this.musicEnabled;
+      localStorage.setItem('tag_music_enabled', this.musicEnabled);
+      if (this.musicEnabled) {
+        this.startBGM();
+      } else {
+        this.stopBGM();
+      }
+    } catch (e) {}
     return this.musicEnabled;
   }
 
+  getSafeTime() {
+    if (!this.ctx) return 0.01;
+    return Math.max(this.ctx.currentTime || 0, 0.01) + 0.005;
+  }
+
+  // Safe tone generator with automatic garbage collection and node disconnection
+  playTone({ type = 'sine', freqStart, freqEnd, duration = 0.1, gainVal = 0.2 }) {
+    if (!this.soundEnabled || !this.available) return;
+    if (this.activeVoices >= this.MAX_VOICES) return;
+
+    try {
+      this.init();
+      if (!this.ctx || this.ctx.state !== 'running') return;
+
+      const ctx = this.ctx;
+      const now = this.getSafeTime();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      this.activeVoices++;
+
+      osc.type = type;
+      osc.frequency.setValueAtTime(freqStart, now);
+      if (freqEnd && freqEnd !== freqStart) {
+        osc.frequency.linearRampToValueAtTime(freqEnd, now + duration);
+      }
+
+      gain.gain.setValueAtTime(gainVal, now);
+      gain.gain.linearRampToValueAtTime(0.0001, now + duration);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      const cleanup = () => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch (e) {}
+        this.activeVoices = Math.max(0, this.activeVoices - 1);
+      };
+
+      osc.onended = cleanup;
+      osc.start(now);
+      osc.stop(now + duration + 0.02);
+
+      // Failsafe auto-disconnect timer in case onended doesn't trigger
+      setTimeout(cleanup, Math.ceil((duration + 0.1) * 1000));
+    } catch (e) {
+      this.activeVoices = Math.max(0, this.activeVoices - 1);
+    }
+  }
+
   playClick() {
-    if (!this.soundEnabled) return;
-    this.init();
-    const ctx = this.ctx;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(600, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.08);
-
-    gain.gain.setValueAtTime(0.2, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.08);
+    this.playTone({
+      type: 'sine',
+      freqStart: 600,
+      freqEnd: 880,
+      duration: 0.07,
+      gainVal: 0.16
+    });
   }
 
   playJump() {
-    if (!this.soundEnabled) return;
-    this.init();
-    const ctx = this.ctx;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(260, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(580, ctx.currentTime + 0.15);
-
-    gain.gain.setValueAtTime(0.25, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.15);
+    this.playTone({
+      type: 'triangle',
+      freqStart: 260,
+      freqEnd: 580,
+      duration: 0.14,
+      gainVal: 0.22
+    });
   }
 
   playBounce() {
-    if (!this.soundEnabled) return;
-    this.init();
-    const ctx = this.ctx;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(180, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.18);
-    osc.frequency.exponentialRampToValueAtTime(320, ctx.currentTime + 0.32);
-
-    gain.gain.setValueAtTime(0.4, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.32);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.32);
+    this.playTone({
+      type: 'sine',
+      freqStart: 180,
+      freqEnd: 680,
+      duration: 0.22,
+      gainVal: 0.3
+    });
   }
 
   playTeleport() {
-    if (!this.soundEnabled) return;
-    this.init();
-    const ctx = this.ctx;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(220, ctx.currentTime + 0.25);
-
-    gain.gain.setValueAtTime(0.2, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.25);
+    this.playTone({
+      type: 'sawtooth',
+      freqStart: 880,
+      freqEnd: 220,
+      duration: 0.22,
+      gainVal: 0.16
+    });
   }
 
   playTag() {
-    if (!this.soundEnabled) return;
-    this.init();
-    const ctx = this.ctx;
-    
-    // Slap noise burst + bell ring
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(350, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.2);
-
-    gain.gain.setValueAtTime(0.45, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.2);
-
-    // High accent ding
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(987.77, ctx.currentTime); // B5
-    gain2.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start();
-    osc2.stop(ctx.currentTime + 0.3);
+    this.playTone({
+      type: 'square',
+      freqStart: 350,
+      freqEnd: 120,
+      duration: 0.18,
+      gainVal: 0.35
+    });
+    setTimeout(() => {
+      this.playTone({
+        type: 'sine',
+        freqStart: 987,
+        freqEnd: 880,
+        duration: 0.22,
+        gainVal: 0.22
+      });
+    }, 40);
   }
 
   playBuff() {
-    if (!this.soundEnabled) return;
-    this.init();
-    const ctx = this.ctx;
-    const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+    const notes = [523.25, 659.25, 783.99, 1046.50];
     notes.forEach((freq, idx) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      const startTime = ctx.currentTime + idx * 0.06;
-      gain.gain.setValueAtTime(0.2, startTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.15);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(startTime);
-      osc.stop(startTime + 0.15);
+      setTimeout(() => {
+        this.playTone({
+          type: 'sine',
+          freqStart: freq,
+          freqEnd: freq,
+          duration: 0.12,
+          gainVal: 0.18
+        });
+      }, idx * 55);
     });
   }
 
   playCountdown() {
-    if (!this.soundEnabled) return;
-    this.init();
-    const ctx = this.ctx;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(440, ctx.currentTime);
-    gain.gain.setValueAtTime(0.25, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.12);
-  }
-
-  playWhistle() {
-    if (!this.soundEnabled) return;
-    this.init();
-    const ctx = this.ctx;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(1760, ctx.currentTime);
-    osc.frequency.linearRampToValueAtTime(1900, ctx.currentTime + 0.08);
-    osc.frequency.linearRampToValueAtTime(1760, ctx.currentTime + 0.15);
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.35);
-  }
-
-  playWin() {
-    if (!this.soundEnabled) return;
-    this.init();
-    const ctx = this.ctx;
-    const chords = [
-      { freqs: [523.25, 659.25, 783.99], time: 0 },
-      { freqs: [587.33, 739.99, 880.00], time: 0.18 },
-      { freqs: [659.25, 830.61, 987.77], time: 0.36 },
-      { freqs: [783.99, 987.77, 1174.66], time: 0.54 }
-    ];
-    chords.forEach(({ freqs, time }) => {
-      freqs.forEach(freq => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.value = freq;
-        const st = ctx.currentTime + time;
-        gain.gain.setValueAtTime(0.15, st);
-        gain.gain.exponentialRampToValueAtTime(0.001, st + 0.3);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(st);
-        osc.stop(st + 0.3);
-      });
+    this.playTone({
+      type: 'sine',
+      freqStart: 440,
+      freqEnd: 440,
+      duration: 0.11,
+      gainVal: 0.2
     });
   }
 
-  // Playful chiptune background music loop
+  playWhistle() {
+    this.playTone({
+      type: 'triangle',
+      freqStart: 1760,
+      freqEnd: 1880,
+      duration: 0.28,
+      gainVal: 0.25
+    });
+  }
+
+  playSplash() {
+    this.playTone({
+      type: 'triangle',
+      freqStart: 380,
+      freqEnd: 160,
+      duration: 0.16,
+      gainVal: 0.22
+    });
+  }
+
+  playWin() {
+    const chords = [
+      { freqs: [523.25, 659.25], delay: 0 },
+      { freqs: [587.33, 739.99], delay: 160 },
+      { freqs: [659.25, 830.61], delay: 320 },
+      { freqs: [783.99, 987.77, 1174.66], delay: 480 }
+    ];
+    chords.forEach(({ freqs, delay }) => {
+      setTimeout(() => {
+        freqs.forEach(f => {
+          this.playTone({
+            type: 'triangle',
+            freqStart: f,
+            freqEnd: f,
+            duration: 0.26,
+            gainVal: 0.12
+          });
+        });
+      }, delay);
+    });
+  }
+
   startBGM() {
-    if (!this.musicEnabled || this.isPlayingBGM) return;
-    this.init();
-    this.isPlayingBGM = true;
-    this.bgmStep = 0;
+    try {
+      if (!this.musicEnabled || !this.available || this.isPlayingBGM) return;
+      this.init();
+      if (!this.ctx) return;
+      this.isPlayingBGM = true;
+      this.bgmStep = 0;
 
-    // Upbeat melody pattern in C Major / Pentatonic
-    const melody = [
-      523.25, null, 659.25, null, 783.99, 659.25, 523.25, null,
-      587.33, null, 783.99, null, 659.25, null, 523.25, null,
-      440.00, null, 523.25, null, 659.25, null, 587.33, 523.25,
-      493.88, null, 587.33, null, 523.25, null, null, null
-    ];
-    const bass = [
-      261.63, null, 261.63, null, 329.63, null, 261.63, null,
-      293.66, null, 293.66, null, 392.00, null, 293.66, null,
-      220.00, null, 220.00, null, 261.63, null, 220.00, null,
-      196.00, null, 246.94, null, 261.63, null, 261.63, null
-    ];
+      const melody = [
+        523.25, null, 659.25, null, 783.99, 659.25, 523.25, null,
+        587.33, null, 783.99, null, 659.25, null, 523.25, null,
+        440.00, null, 523.25, null, 659.25, null, 587.33, 523.25,
+        493.88, null, 587.33, null, 523.25, null, null, null
+      ];
+      const bass = [
+        261.63, null, 261.63, null, 329.63, null, 261.63, null,
+        293.66, null, 293.66, null, 392.00, null, 293.66, null,
+        220.00, null, 220.00, null, 261.63, null, 220.00, null,
+        196.00, null, 246.94, null, 261.63, null, 261.63, null
+      ];
 
-    const stepInterval = 135; // ~111 BPM
-    const playNextNote = () => {
-      if (!this.musicEnabled || !this.isPlayingBGM) return;
+      const stepInterval = 140;
+      const playNextNote = () => {
+        if (!this.musicEnabled || !this.isPlayingBGM || !this.available) return;
 
-      const mFreq = melody[this.bgmStep % melody.length];
-      const bFreq = bass[this.bgmStep % bass.length];
-      const now = this.ctx.currentTime;
+        try {
+          if (this.ctx && this.ctx.state === 'running') {
+            const mFreq = melody[this.bgmStep % melody.length];
+            const bFreq = bass[this.bgmStep % bass.length];
 
-      if (mFreq) {
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(mFreq, now);
-        gain.gain.setValueAtTime(0.08, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.16);
-      }
+            if (mFreq) {
+              this.playTone({
+                type: 'triangle',
+                freqStart: mFreq,
+                freqEnd: mFreq,
+                duration: 0.13,
+                gainVal: 0.06
+              });
+            }
 
-      if (bFreq) {
-        const bOsc = this.ctx.createOscillator();
-        const bGain = this.ctx.createGain();
-        bOsc.type = 'sine';
-        bOsc.frequency.setValueAtTime(bFreq / 2, now);
-        bGain.gain.setValueAtTime(0.12, now);
-        bGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
-        bOsc.connect(bGain);
-        bGain.connect(this.ctx.destination);
-        bOsc.start(now);
-        bOsc.stop(now + 0.22);
-      }
+            if (bFreq) {
+              this.playTone({
+                type: 'sine',
+                freqStart: bFreq / 2,
+                freqEnd: bFreq / 2,
+                duration: 0.18,
+                gainVal: 0.08
+              });
+            }
+          }
+        } catch (e) {}
 
-      this.bgmStep++;
-      this.bgmTimer = setTimeout(playNextNote, stepInterval);
-    };
+        this.bgmStep++;
+        this.bgmTimer = setTimeout(playNextNote, stepInterval);
+      };
 
-    playNextNote();
+      playNextNote();
+    } catch (e) {
+      this.isPlayingBGM = false;
+    }
   }
 
   stopBGM() {

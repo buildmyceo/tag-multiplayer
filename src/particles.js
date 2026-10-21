@@ -22,6 +22,24 @@ export class ParticleSystem {
     }
   }
 
+  // Water splash ripples and droplets
+  createWaterSplash(x, y, count = 10) {
+    const colors = ['#38bdf8', '#00e5ff', '#ffffff', '#e0f7fa'];
+    for (let i = 0; i < count; i++) {
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * 22,
+        y: y + (Math.random() - 0.5) * 5,
+        vx: (Math.random() - 0.5) * 4.5,
+        vy: -Math.random() * 4.2 - 1.2,
+        radius: Math.random() * 4 + 2,
+        alpha: 0.85,
+        decay: Math.random() * 0.04 + 0.03,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        type: 'circle'
+      });
+    }
+  }
+
   // Tag impact comic starburst + floating TAG text
   createTagBurst(x, y) {
     const colors = ['#ff3366', '#ffd000', '#00e676', '#38bdf8', '#ffffff'];
