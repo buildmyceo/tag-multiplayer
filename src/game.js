@@ -73,6 +73,7 @@ export class Game {
     this.countdown = 3;
     this.countdownTimer = 180;
     this.isMatchStarted = false;
+    this.isPaused = false;
 
     // Dynamic 20s Random Portal System
     this.portalActive = false;
@@ -135,11 +136,11 @@ export class Game {
         e.preventDefault();
       }
 
-      if (e.key === 'Escape') {
-        if (this.state === GAME_STATES.SETTINGS || this.state === GAME_STATES.CONTROLS_MODAL) {
+      if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
+        if (this.state === GAME_STATES.PLAYING) {
+          this.togglePause();
+        } else if (this.state === GAME_STATES.SETTINGS || this.state === GAME_STATES.CONTROLS_MODAL) {
           this.state = this.previousState;
-        } else if (this.state === GAME_STATES.PLAYING && this.gameMode === 'LOCAL') {
-          this.state = GAME_STATES.MENU;
         } else if (this.state === GAME_STATES.CHOOSE_MAP || this.state === GAME_STATES.ONLINE_MENU || this.state === GAME_STATES.ONLINE_CREATE) {
           this.state = GAME_STATES.MENU;
         }
@@ -369,6 +370,7 @@ export class Game {
       this.countdown = 3;
       this.countdownTimer = 180;
       this.isMatchStarted = false;
+      this.isPaused = false;
 
       // Reset dynamic portals
       this.currentMap.portals = [];
@@ -484,6 +486,14 @@ export class Game {
     this.toastTimer = 110;
   }
 
+  togglePause() {
+    if (this.state !== GAME_STATES.PLAYING) return;
+    this.isPaused = !this.isPaused;
+    try {
+      soundManager.playClick();
+    } catch (e) {}
+  }
+
   // Start Online Match (Synced across devices)
   startOnlineMatch(data) {
     this.gameMode = 'ONLINE';
@@ -496,6 +506,7 @@ export class Game {
     this.countdown = 3;
     this.countdownTimer = 180;
     this.isMatchStarted = false;
+    this.isPaused = false;
 
     // Reset dynamic portals
     this.currentMap.portals = [];
@@ -624,10 +635,29 @@ export class Game {
     } else if (this.state === GAME_STATES.CONTROLS_MODAL) {
       if (mx >= 520 && mx <= 760 && my >= 520 && my <= 580) this.hoveredButton = 'close_controls';
     } else if (this.state === GAME_STATES.PLAYING) {
-      if (mx >= 20 && mx <= 130 && my >= 16 && my <= 64) this.hoveredButton = 'ingame_menu';
-      if (mx >= 140 && mx <= 250 && my >= 16 && my <= 64) this.hoveredButton = 'ingame_controls';
-      if (mx >= 720 && mx <= 880 && my >= 16 && my <= 64) this.hoveredButton = 'ingame_bot_toggle';
-      if (mx >= 1205 && mx <= 1260 && my >= 16 && my <= 68) this.hoveredButton = 'audio_btn';
+      if (this.isPaused) {
+        const mw = 460;
+        const mh = 470;
+        const modalX = (this.width - mw) / 2;
+        const modalY = (this.height - mh) / 2;
+        const btnW = (mw - 95) / 2;
+
+        if (mx >= 20 && mx <= 72 && my >= 14 && my <= 66) {
+          this.hoveredButton = 'pause_btn';
+        } else if (mx >= modalX + 40 && mx <= modalX + mw - 40) {
+          if (my >= modalY + 115 && my <= modalY + 167) this.hoveredButton = 'pause_resume';
+          else if (my >= modalY + 180 && my <= modalY + 232) this.hoveredButton = 'pause_restart';
+          else if (my >= modalY + 245 && my <= modalY + 297) this.hoveredButton = 'pause_controls';
+          else if (my >= modalY + 375 && my <= modalY + 427) this.hoveredButton = 'pause_quit';
+        }
+        
+        if (my >= modalY + 310 && my <= modalY + 358) {
+          if (mx >= modalX + 40 && mx <= modalX + 40 + btnW) this.hoveredButton = 'pause_sound';
+          else if (mx >= modalX + 55 + btnW && mx <= modalX + 55 + btnW * 2) this.hoveredButton = 'pause_music';
+        }
+      } else {
+        if (mx >= 20 && mx <= 72 && my >= 14 && my <= 66) this.hoveredButton = 'pause_btn';
+      }
     } else if (this.state === GAME_STATES.GAME_OVER) {
       if (mx >= 420 && mx <= 620 && my >= 530 && my <= 588) this.hoveredButton = 'play_again';
       if (mx >= 660 && mx <= 860 && my >= 530 && my <= 588) this.hoveredButton = 'change_map';
@@ -762,15 +792,34 @@ export class Game {
         this.state = this.previousState;
       }
     } else if (this.state === GAME_STATES.PLAYING) {
-      if (this.hoveredButton === 'ingame_menu') {
+      if (this.hoveredButton === 'pause_btn') {
+        this.togglePause();
+      } else if (this.hoveredButton === 'pause_resume') {
+        this.isPaused = false;
+      } else if (this.hoveredButton === 'pause_restart') {
+        this.isPaused = false;
+        if (this.gameMode === 'ONLINE') {
+          networkManager.restartMatch();
+        } else {
+          this.startLocalMatch(this.currentMapKey, this.playerCount, this.isVsBot);
+        }
+      } else if (this.hoveredButton === 'pause_controls') {
+        this.previousState = this.state;
+        this.state = GAME_STATES.CONTROLS_MODAL;
+      } else if (this.hoveredButton === 'pause_sound') {
+        soundManager.toggleSound();
+        this.showToast(soundManager.soundEnabled ? '🔊 SFX: ON' : '🔇 SFX: MUTED');
+      } else if (this.hoveredButton === 'pause_music') {
+        soundManager.toggleMusic();
+        this.showToast(soundManager.musicEnabled ? '🎵 BGM: ON' : '🎵 BGM: MUTED');
+      } else if (this.hoveredButton === 'pause_quit') {
+        this.isPaused = false;
         if (this.gameMode === 'ONLINE') {
           networkManager.disconnect();
           this.state = GAME_STATES.ONLINE_MENU;
         } else {
           this.state = GAME_STATES.MENU;
         }
-      } else if (this.hoveredButton === 'ingame_bot_toggle') {
-        this.toggleBotMode();
       }
     } else if (this.state === GAME_STATES.GAME_OVER) {
       if (this.hoveredButton === 'play_again') {
@@ -791,7 +840,9 @@ export class Game {
   }
 
   update() {
-    this.particles.update();
+    if (this.state !== GAME_STATES.PLAYING || !this.isPaused) {
+      this.particles.update();
+    }
     this.menuAnimTime += 0.045;
 
     if (this.toastTimer > 0) {
@@ -807,7 +858,9 @@ export class Game {
     }
 
     if (this.state === GAME_STATES.PLAYING) {
-      this.updatePlayingMatch();
+      if (!this.isPaused) {
+        this.updatePlayingMatch();
+      }
     } else if (this.state === GAME_STATES.MENU) {
       this.particles.spawnAmbient('petals', this.width, this.height);
     }
@@ -1021,6 +1074,7 @@ export class Game {
   }
 
   endMatch() {
+    this.isPaused = false;
     this.state = GAME_STATES.GAME_OVER;
     soundManager.playWin();
 
@@ -2012,6 +2066,14 @@ export class Game {
         console.warn('renderCountdownOverlay error:', e);
       }
     }
+
+    if (this.isPaused) {
+      try {
+        this.renderPauseModal(ctx);
+      } catch (e) {
+        console.warn('renderPauseModal error:', e);
+      }
+    }
   }
 
   renderCountdownOverlay(ctx) {
@@ -2049,10 +2111,10 @@ export class Game {
     ctx.restore();
   }
 
-
   renderHUD(ctx) {
     ctx.save();
 
+    // 1. Center Round Countdown Timer
     const min = Math.floor(this.roundTimer / 60);
     const sec = this.roundTimer % 60;
     const timeStr = `${min}:${sec < 10 ? '0' : ''}${sec}`;
@@ -2073,19 +2135,12 @@ export class Game {
     ctx.textBaseline = 'middle';
     ctx.fillText(timeStr, this.width / 2, 40);
 
-    const isHoverMenu = this.hoveredButton === 'ingame_menu';
-    this.drawHudButton(20, 16, 110, 48, '◀ MENU', isHoverMenu);
+    // 2. Dedicated Pause Button (II) in Top-Left (x: 20, y: 14, w: 52, h: 52)
+    const isHoverPause = this.hoveredButton === 'pause_btn';
+    this.drawPauseButton(20, 14, 52, 52, isHoverPause);
 
-    const isHoverControls = this.hoveredButton === 'ingame_controls';
-    this.drawHudButton(140, 16, 110, 48, '⌨ KEYS', isHoverControls);
-
-    // Bot AI Toggle in Local matches
-    if (this.gameMode === 'LOCAL') {
-      const isHoverBot = this.hoveredButton === 'ingame_bot_toggle';
-      const botText = this.botsEnabled ? '🤖 BOTS: ON' : '👤 BOTS: OFF';
-      this.drawHudButton(725, 16, 145, 48, botText, isHoverBot);
-    } else if (this.gameMode === 'ONLINE') {
-      // In Online matches: draw live Ping indicator
+    // 3. Online Live Ping Indicator in Top-Right (Online matches only)
+    if (this.gameMode === 'ONLINE') {
       const pingVal = networkManager.ping;
       let pingColor = '#10b981'; // Green (< 60ms)
       let pingStatus = 'GOOD';
@@ -2097,15 +2152,15 @@ export class Game {
         pingStatus = 'OK';
       }
 
-      const pingX = 725;
-      const pingY = 16;
-      const pingW = 145;
-      const pingH = 48;
+      const pingX = this.width - 170;
+      const pingY = 14;
+      const pingW = 150;
+      const pingH = 52;
 
       ctx.save();
       ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
       ctx.beginPath();
-      ctx.roundRect(pingX, pingY, pingW, pingH, 12);
+      ctx.roundRect(pingX, pingY, pingW, pingH, 14);
       ctx.fill();
 
       ctx.strokeStyle = pingColor;
@@ -2118,7 +2173,7 @@ export class Game {
       ctx.shadowColor = pingColor;
       ctx.shadowBlur = 6 + pulse * 6;
       ctx.beginPath();
-      ctx.arc(pingX + 22, pingY + 24, 5 + pulse * 1.5, 0, Math.PI * 2);
+      ctx.arc(pingX + 22, pingY + 26, 5 + pulse * 1.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.shadowBlur = 0;
 
@@ -2127,60 +2182,125 @@ export class Game {
       ctx.font = '900 15px "Lilita One", cursive';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(pingVal ? `${pingVal} ms` : 'PING...', pingX + 36, pingY + 19);
+      ctx.fillText(pingVal ? `${pingVal} ms` : 'PING...', pingX + 36, pingY + 20);
 
       ctx.fillStyle = pingColor;
       ctx.font = '800 11px "Lilita One", cursive';
-      ctx.fillText(pingVal ? `PING: ${pingStatus}` : 'CONNECTING', pingX + 36, pingY + 35);
+      ctx.fillText(pingVal ? `PING: ${pingStatus}` : 'CONNECTING', pingX + 36, pingY + 36);
       ctx.restore();
     }
-
-    // Player Status Cards
-    for (let i = 0; i < this.players.length; i++) {
-      const p = this.players[i];
-      const cardX = 270 + i * 125;
-      const cardY = 16;
-
-      ctx.fillStyle = p.isIt ? '#ff1744' : 'rgba(0, 0, 0, 0.55)';
-      ctx.beginPath();
-      ctx.roundRect(cardX, cardY, 115, 48, 12);
-      ctx.fill();
-
-      ctx.strokeStyle = p.isIt ? '#ffffff' : p.color;
-      ctx.lineWidth = p.isIt ? 3.5 : 2;
-      ctx.stroke();
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '900 13px "Lilita One", cursive';
-      ctx.textAlign = 'center';
-      ctx.fillText(`P${p.id} ${p.isIt ? '🔥 IT!' : 'RUN!'}`, cardX + 57, cardY + 18);
-
-      ctx.font = '800 11px "Lilita One", cursive';
-      ctx.fillStyle = p.isIt ? '#ffebee' : p.color;
-      ctx.fillText(`[${p.label}]`, cardX + 57, cardY + 36);
-    }
-
-    this.drawIconButton(1205, 14, 52, '#38bdf8', '🎵', soundManager.musicEnabled, this.hoveredButton === 'audio_btn');
 
     ctx.restore();
   }
 
-  drawHudButton(x, y, w, h, text, isHovered) {
+  drawPauseButton(x, y, w, h, isHovered) {
     const ctx = this.ctx;
-    ctx.fillStyle = isHovered ? '#3b82f6' : 'rgba(0, 0, 0, 0.55)';
+    ctx.save();
+
+    // Frosted glass background
+    ctx.fillStyle = isHovered ? 'rgba(56, 189, 248, 0.45)' : 'rgba(0, 0, 0, 0.6)';
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 12);
+    ctx.roundRect(x, y, w, h, 14);
     ctx.fill();
 
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2.5;
+    // Border with neon blue glow on hover
+    ctx.strokeStyle = isHovered ? '#38bdf8' : 'rgba(255, 255, 255, 0.7)';
+    ctx.lineWidth = isHovered ? 3 : 2.5;
+    if (isHovered) {
+      ctx.shadowColor = '#38bdf8';
+      ctx.shadowBlur = 10;
+    }
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
+    // Draw two crisp, rounded vertical pause bars (❚ ❚)
     ctx.fillStyle = '#ffffff';
-    ctx.font = '900 16px "Lilita One", cursive';
+    const barWidth = 6;
+    const barHeight = 22;
+    const gap = 8;
+    const centerX = x + w / 2;
+    const centerY = y + h / 2;
+
+    // Left bar
+    ctx.beginPath();
+    ctx.roundRect(centerX - gap / 2 - barWidth, centerY - barHeight / 2, barWidth, barHeight, 3);
+    ctx.fill();
+
+    // Right bar
+    ctx.beginPath();
+    ctx.roundRect(centerX + gap / 2, centerY - barHeight / 2, barWidth, barHeight, 3);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  renderPauseModal(ctx) {
+    ctx.save();
+
+    // Dark semi-transparent frosted backdrop
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    const mw = 460;
+    const mh = 470;
+    const mx = (this.width - mw) / 2;
+    const my = (this.height - mh) / 2;
+
+    // Modal card background
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.96)';
+    ctx.beginPath();
+    ctx.roundRect(mx, my, mw, mh, 24);
+    ctx.fill();
+
+    // Neon Cyan border with glow
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 3.5;
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = 18;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Header: ❚❚ GAME PAUSED
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, x + w / 2, y + h / 2);
+    ctx.font = '900 44px "Lilita One", cursive';
+    ctx.fillStyle = '#ffd000';
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 8;
+    ctx.strokeText('❚❚  GAME PAUSED', this.width / 2, my + 52);
+    ctx.fillText('❚❚  GAME PAUSED', this.width / 2, my + 52);
+
+    // Subtitle
+    ctx.font = '800 15px "Lilita One", cursive';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('Press ESC or P to Resume', this.width / 2, my + 88);
+
+    // 1. Resume Game Button
+    const isHoverResume = this.hoveredButton === 'pause_resume';
+    this.drawMenuButton(mx + 40, my + 115, mw - 80, 52, '#00c853', '▶ RESUME GAME', '#ffffff', isHoverResume);
+
+    // 2. Restart Match Button
+    const isHoverRestart = this.hoveredButton === 'pause_restart';
+    this.drawMenuButton(mx + 40, my + 180, mw - 80, 52, '#f59e0b', '🔄 RESTART MATCH', '#ffffff', isHoverRestart);
+
+    // 3. Controls Button
+    const isHoverControls = this.hoveredButton === 'pause_controls';
+    this.drawMenuButton(mx + 40, my + 245, mw - 80, 52, '#38bdf8', '⌨ CONTROLS', '#ffffff', isHoverControls);
+
+    // 4. Sound & Music Toggles
+    const btnW = (mw - 95) / 2;
+    const isHoverSound = this.hoveredButton === 'pause_sound';
+    const isHoverMusic = this.hoveredButton === 'pause_music';
+    const soundText = soundManager.soundEnabled ? '🔊 SFX: ON' : '🔇 SFX: OFF';
+    const musicText = soundManager.musicEnabled ? '🎵 BGM: ON' : '🎵 BGM: OFF';
+    this.drawMenuButton(mx + 40, my + 310, btnW, 48, soundManager.soundEnabled ? '#10b981' : '#475569', soundText, '#ffffff', isHoverSound);
+    this.drawMenuButton(mx + 55 + btnW, my + 310, btnW, 48, soundManager.musicEnabled ? '#8b5cf6' : '#475569', musicText, '#ffffff', isHoverMusic);
+
+    // 5. Quit to Menu Button
+    const isHoverQuit = this.hoveredButton === 'pause_quit';
+    this.drawMenuButton(mx + 40, my + 375, mw - 80, 52, '#ef4444', '◀ QUIT TO MENU', '#ffffff', isHoverQuit);
+
+    ctx.restore();
   }
 
   renderGameOverModal() {
