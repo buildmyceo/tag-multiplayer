@@ -23,12 +23,21 @@ export class NetworkManager {
   }
 
   on(event, cb) {
-    this.callbacks[event] = cb;
+    if (!this.callbacks[event]) {
+      this.callbacks[event] = [];
+    }
+    this.callbacks[event].push(cb);
   }
 
   emit(event, data) {
     if (this.callbacks[event]) {
-      this.callbacks[event](data);
+      for (const cb of this.callbacks[event]) {
+        try {
+          cb(data);
+        } catch (e) {
+          console.warn('[Network callback error]:', e);
+        }
+      }
     }
   }
 
@@ -398,3 +407,6 @@ export class NetworkManager {
 }
 
 export const networkManager = new NetworkManager();
+if (typeof window !== 'undefined') {
+  window.networkManager = networkManager;
+}
