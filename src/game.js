@@ -636,24 +636,16 @@ export class Game {
       if (mx >= 520 && mx <= 760 && my >= 520 && my <= 580) this.hoveredButton = 'close_controls';
     } else if (this.state === GAME_STATES.PLAYING) {
       if (this.isPaused) {
-        const mw = 460;
-        const mh = 470;
-        const modalX = (this.width - mw) / 2;
-        const modalY = (this.height - mh) / 2;
-        const btnW = (mw - 95) / 2;
+        const btnX = 470;
+        const btnW = 340;
+        const btnH = 64;
 
         if (mx >= 20 && mx <= 72 && my >= 14 && my <= 66) {
           this.hoveredButton = 'pause_btn';
-        } else if (mx >= modalX + 40 && mx <= modalX + mw - 40) {
-          if (my >= modalY + 115 && my <= modalY + 167) this.hoveredButton = 'pause_resume';
-          else if (my >= modalY + 180 && my <= modalY + 232) this.hoveredButton = 'pause_restart';
-          else if (my >= modalY + 245 && my <= modalY + 297) this.hoveredButton = 'pause_controls';
-          else if (my >= modalY + 375 && my <= modalY + 427) this.hoveredButton = 'pause_quit';
-        }
-        
-        if (my >= modalY + 310 && my <= modalY + 358) {
-          if (mx >= modalX + 40 && mx <= modalX + 40 + btnW) this.hoveredButton = 'pause_sound';
-          else if (mx >= modalX + 55 + btnW && mx <= modalX + 55 + btnW * 2) this.hoveredButton = 'pause_music';
+        } else if (mx >= btnX && mx <= btnX + btnW) {
+          if (my >= 275 && my <= 275 + btnH) this.hoveredButton = 'pause_resume';
+          else if (my >= 360 && my <= 360 + btnH) this.hoveredButton = 'pause_settings';
+          else if (my >= 445 && my <= 445 + btnH) this.hoveredButton = 'pause_exit';
         }
       } else {
         if (mx >= 20 && mx <= 72 && my >= 14 && my <= 66) this.hoveredButton = 'pause_btn';
@@ -796,23 +788,10 @@ export class Game {
         this.togglePause();
       } else if (this.hoveredButton === 'pause_resume') {
         this.isPaused = false;
-      } else if (this.hoveredButton === 'pause_restart') {
-        this.isPaused = false;
-        if (this.gameMode === 'ONLINE') {
-          networkManager.restartMatch();
-        } else {
-          this.startLocalMatch(this.currentMapKey, this.playerCount, this.isVsBot);
-        }
-      } else if (this.hoveredButton === 'pause_controls') {
+      } else if (this.hoveredButton === 'pause_settings') {
         this.previousState = this.state;
-        this.state = GAME_STATES.CONTROLS_MODAL;
-      } else if (this.hoveredButton === 'pause_sound') {
-        soundManager.toggleSound();
-        this.showToast(soundManager.soundEnabled ? '🔊 SFX: ON' : '🔇 SFX: MUTED');
-      } else if (this.hoveredButton === 'pause_music') {
-        soundManager.toggleMusic();
-        this.showToast(soundManager.musicEnabled ? '🎵 BGM: ON' : '🎵 BGM: MUTED');
-      } else if (this.hoveredButton === 'pause_quit') {
+        this.state = GAME_STATES.SETTINGS;
+      } else if (this.hoveredButton === 'pause_exit') {
         this.isPaused = false;
         if (this.gameMode === 'ONLINE') {
           networkManager.disconnect();
@@ -2237,68 +2216,328 @@ export class Game {
   renderPauseModal(ctx) {
     ctx.save();
 
-    // Dark semi-transparent frosted backdrop
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+    // 1. Deep blue atmospheric backdrop tint
+    ctx.fillStyle = 'rgba(10, 32, 70, 0.65)';
     ctx.fillRect(0, 0, this.width, this.height);
 
-    const mw = 460;
-    const mh = 470;
-    const mx = (this.width - mw) / 2;
-    const my = (this.height - mh) / 2;
+    const cardW = 440;
+    const cardH = 370;
+    const cardX = (this.width - cardW) / 2; // 420
+    const cardY = 220;
 
-    // Modal card background
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.96)';
+    // 2. Cute Cartoon Green Leaves sprouting from behind the card edges
+    this.drawCuteLeaf(ctx, cardX + 6, cardY + 80, 44, 22, -Math.PI / 3, '#00e676');
+    this.drawCuteLeaf(ctx, cardX + 2, cardY + 150, 48, 24, -Math.PI / 2.2, '#00c853');
+    this.drawCuteLeaf(ctx, cardX + 6, cardY + 220, 40, 20, -Math.PI / 1.5, '#00e676');
+
+    this.drawCuteLeaf(ctx, cardX + cardW - 6, cardY + 150, 46, 23, Math.PI / 2.4, '#00e676');
+    this.drawCuteLeaf(ctx, cardX + cardW - 2, cardY + 220, 42, 21, Math.PI / 1.6, '#00c853');
+
+    // 3. Frosted Glass Card
+    ctx.save();
+    ctx.shadowColor = 'rgba(56, 189, 248, 0.45)';
+    ctx.shadowBlur = 26;
+    ctx.fillStyle = 'rgba(18, 55, 115, 0.62)';
     ctx.beginPath();
-    ctx.roundRect(mx, my, mw, mh, 24);
+    ctx.roundRect(cardX, cardY, cardW, cardH, 36);
     ctx.fill();
-
-    // Neon Cyan border with glow
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 3.5;
-    ctx.shadowColor = '#38bdf8';
-    ctx.shadowBlur = 18;
-    ctx.stroke();
     ctx.shadowBlur = 0;
 
-    // Header: ❚❚ GAME PAUSED
+    // Glass gradient reflection
+    const cardGrad = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardH);
+    cardGrad.addColorStop(0, 'rgba(255, 255, 255, 0.18)');
+    cardGrad.addColorStop(0.35, 'rgba(56, 189, 248, 0.10)');
+    cardGrad.addColorStop(1, 'rgba(10, 30, 75, 0.45)');
+    ctx.fillStyle = cardGrad;
+    ctx.beginPath();
+    ctx.roundRect(cardX, cardY, cardW, cardH, 36);
+    ctx.fill();
+
+    // Soft glowing border
+    ctx.strokeStyle = 'rgba(186, 230, 253, 0.75)';
+    ctx.lineWidth = 3.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // 4. Three 3D Candy Buttons
+    const btnW = 340;
+    const btnH = 64;
+    const btnX = (this.width - btnW) / 2; // 470
+
+    // RESUME Button
+    this.drawCandyButton(
+      ctx,
+      btnX,
+      275,
+      btnW,
+      btnH,
+      'play',
+      'RESUME',
+      {
+        faceTop: '#00f589',
+        faceBottom: '#00c853',
+        shadow: '#00873a'
+      },
+      this.hoveredButton === 'pause_resume'
+    );
+
+    // SETTINGS Button
+    this.drawCandyButton(
+      ctx,
+      btnX,
+      360,
+      btnW,
+      btnH,
+      'settings',
+      'SETTINGS',
+      {
+        faceTop: '#29b6f6',
+        faceBottom: '#0288d1',
+        shadow: '#01579b'
+      },
+      this.hoveredButton === 'pause_settings'
+    );
+
+    // EXIT Button
+    this.drawCandyButton(
+      ctx,
+      btnX,
+      445,
+      btnW,
+      btnH,
+      'exit',
+      'EXIT',
+      {
+        faceTop: '#ff3b77',
+        faceBottom: '#e6005c',
+        shadow: '#99003d'
+      },
+      this.hoveredButton === 'pause_exit'
+    );
+
+    // 5. Colorful Sprinkles around PAUSE
+    // Left Sprinkles
+    this.drawPauseSprinkle(ctx, 434, 154, 11, 28, -0.65, '#ff2a6d'); // Pink
+    this.drawPauseSprinkle(ctx, 424, 194, 10, 22, -0.15, '#38bdf8'); // Cyan
+    this.drawPauseSprinkle(ctx, 442, 228, 10, 22, 0.55, '#ffd000'); // Yellow
+
+    // Right Sprinkles
+    this.drawPauseSprinkle(ctx, 846, 158, 11, 28, 0.65, '#ff2a6d'); // Pink
+    this.drawPauseSprinkle(ctx, 856, 194, 10, 22, 0.15, '#ffd000'); // Yellow
+
+    // 6. Bubbly 3D Cartoon "PAUSE" Title
+    this.drawPauseTitle(ctx, this.width / 2, 195);
+
+    ctx.restore();
+  }
+
+  drawCuteLeaf(ctx, x, y, length, width, angle, color) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    // Leaf body
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(-width * 0.6, -length * 0.4, -width * 0.65, -length * 0.8, 0, -length);
+    ctx.bezierCurveTo(width * 0.65, -length * 0.8, width * 0.6, -length * 0.4, 0, 0);
+    ctx.fill();
+
+    // Leaf center vein shine
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, -length * 0.25);
+    ctx.lineTo(0, -length * 0.75);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  drawPauseSprinkle(ctx, cx, cy, w, h, angle, color) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(-w / 2, -h / 2, w, h, w / 2);
+    ctx.fill();
+
+    // Subtle highlight
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+    ctx.beginPath();
+    ctx.roundRect(-w / 2 + 1.5, -h / 2 + 1.5, w - 3, h * 0.45, w / 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawPauseTitle(ctx, cx, cy) {
+    ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '900 44px "Lilita One", cursive';
-    ctx.fillStyle = '#ffd000';
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 8;
-    ctx.strokeText('❚❚  GAME PAUSED', this.width / 2, my + 52);
-    ctx.fillText('❚❚  GAME PAUSED', this.width / 2, my + 52);
+    ctx.font = '900 90px "Lilita One", cursive';
 
-    // Subtitle
-    ctx.font = '800 15px "Lilita One", cursive';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('Press ESC or P to Resume', this.width / 2, my + 88);
+    const text = 'PAUSE';
 
-    // 1. Resume Game Button
-    const isHoverResume = this.hoveredButton === 'pause_resume';
-    this.drawMenuButton(mx + 40, my + 115, mw - 80, 52, '#00c853', '▶ RESUME GAME', '#ffffff', isHoverResume);
+    // Layer 1: Dark Navy drop shadow
+    ctx.fillStyle = '#081736';
+    ctx.strokeStyle = '#081736';
+    ctx.lineWidth = 24;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(text, cx, cy + 12);
+    ctx.fillText(text, cx, cy + 12);
 
-    // 2. Restart Match Button
-    const isHoverRestart = this.hoveredButton === 'pause_restart';
-    this.drawMenuButton(mx + 40, my + 180, mw - 80, 52, '#f59e0b', '🔄 RESTART MATCH', '#ffffff', isHoverRestart);
+    // Layer 2: Vibrant magenta/purple 3D extrusion
+    ctx.fillStyle = '#c026d3';
+    ctx.strokeStyle = '#c026d3';
+    ctx.lineWidth = 18;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(text, cx, cy + 6);
+    ctx.fillText(text, cx, cy + 6);
 
-    // 3. Controls Button
-    const isHoverControls = this.hoveredButton === 'pause_controls';
-    this.drawMenuButton(mx + 40, my + 245, mw - 80, 52, '#38bdf8', '⌨ CONTROLS', '#ffffff', isHoverControls);
+    // Layer 3: Dark blue/navy outline
+    ctx.strokeStyle = '#0c2247';
+    ctx.lineWidth = 14;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(text, cx, cy);
 
-    // 4. Sound & Music Toggles
-    const btnW = (mw - 95) / 2;
-    const isHoverSound = this.hoveredButton === 'pause_sound';
-    const isHoverMusic = this.hoveredButton === 'pause_music';
-    const soundText = soundManager.soundEnabled ? '🔊 SFX: ON' : '🔇 SFX: OFF';
-    const musicText = soundManager.musicEnabled ? '🎵 BGM: ON' : '🎵 BGM: OFF';
-    this.drawMenuButton(mx + 40, my + 310, btnW, 48, soundManager.soundEnabled ? '#10b981' : '#475569', soundText, '#ffffff', isHoverSound);
-    this.drawMenuButton(mx + 55 + btnW, my + 310, btnW, 48, soundManager.musicEnabled ? '#8b5cf6' : '#475569', musicText, '#ffffff', isHoverMusic);
+    // Layer 4: Gradient face (white at top to light ice-cyan at bottom)
+    const grad = ctx.createLinearGradient(cx, cy - 45, cx, cy + 30);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.35, '#f0f9ff');
+    grad.addColorStop(0.7, '#bae6fd');
+    grad.addColorStop(1, '#7dd3fc');
+    ctx.fillStyle = grad;
+    ctx.fillText(text, cx, cy);
 
-    // 5. Quit to Menu Button
-    const isHoverQuit = this.hoveredButton === 'pause_quit';
-    this.drawMenuButton(mx + 40, my + 375, mw - 80, 52, '#ef4444', '◀ QUIT TO MENU', '#ffffff', isHoverQuit);
+    // Layer 5: Inner white shine stroke
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.lineWidth = 2.5;
+    ctx.strokeText(text, cx, cy);
+
+    ctx.restore();
+  }
+
+  drawCandyButton(ctx, x, y, w, h, iconType, text, colors, isHovered) {
+    ctx.save();
+
+    const yOffset = isHovered ? -2 : 0;
+    const currentY = y + yOffset;
+
+    // 1. Bottom 3D Bevel / Shadow
+    ctx.fillStyle = colors.shadow;
+    ctx.beginPath();
+    ctx.roundRect(x, y + 8, w, h - 2, 32);
+    ctx.fill();
+
+    // 2. Button Face Gradient
+    const faceGrad = ctx.createLinearGradient(x, currentY, x, currentY + h);
+    faceGrad.addColorStop(0, colors.faceTop);
+    faceGrad.addColorStop(1, colors.faceBottom);
+    ctx.fillStyle = faceGrad;
+    ctx.beginPath();
+    ctx.roundRect(x, currentY, w, h, 32);
+    ctx.fill();
+
+    // 3. Subtle white rim border
+    ctx.strokeStyle = isHovered ? '#ffffff' : 'rgba(255, 255, 255, 0.6)';
+    ctx.lineWidth = isHovered ? 2.5 : 1.8;
+    ctx.stroke();
+
+    // 4. Glossy Top Bubble Highlight
+    const hlGrad = ctx.createLinearGradient(x, currentY + 3, x, currentY + 22);
+    hlGrad.addColorStop(0, 'rgba(255, 255, 255, 0.55)');
+    hlGrad.addColorStop(1, 'rgba(255, 255, 255, 0.08)');
+    ctx.fillStyle = hlGrad;
+    ctx.beginPath();
+    ctx.roundRect(x + 16, currentY + 4, w - 32, 20, 10);
+    ctx.fill();
+
+    // 5. Measure text and icon to center them as a group
+    ctx.font = '900 28px "Lilita One", cursive';
+    const textWidth = ctx.measureText(text).width;
+    const iconWidth = 26;
+    const gap = 16;
+    const totalGroupW = iconWidth + gap + textWidth;
+    const startX = x + (w - totalGroupW) / 2;
+    const centerY = currentY + h / 2;
+
+    // Draw Icon
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#ffffff';
+    const iconCenterX = startX + iconWidth / 2;
+
+    if (iconType === 'play') {
+      // Rounded Play triangle
+      ctx.beginPath();
+      ctx.moveTo(iconCenterX - 9, centerY - 13);
+      ctx.lineTo(iconCenterX + 12, centerY);
+      ctx.lineTo(iconCenterX - 9, centerY + 13);
+      ctx.closePath();
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.fill();
+    } else if (iconType === 'settings') {
+      // Clean Cog / Gear
+      const teeth = 8;
+      const outerR = 13;
+      const innerR = 9.5;
+      ctx.beginPath();
+      for (let i = 0; i < teeth * 2; i++) {
+        const r = i % 2 === 0 ? outerR : innerR;
+        const a = (i * Math.PI) / teeth;
+        const px = iconCenterX + Math.cos(a) * r;
+        const py = centerY + Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+
+      // Cog center hole
+      ctx.fillStyle = colors.faceBottom;
+      ctx.beginPath();
+      ctx.arc(iconCenterX, centerY, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (iconType === 'exit') {
+      // Exit door with arrow
+      ctx.lineWidth = 3.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Door frame
+      ctx.beginPath();
+      ctx.moveTo(iconCenterX + 3, centerY - 12);
+      ctx.lineTo(iconCenterX - 11, centerY - 12);
+      ctx.lineTo(iconCenterX - 11, centerY + 12);
+      ctx.lineTo(iconCenterX + 3, centerY + 12);
+      ctx.stroke();
+
+      // Arrow pointing right
+      ctx.beginPath();
+      ctx.moveTo(iconCenterX - 5, centerY);
+      ctx.lineTo(iconCenterX + 11, centerY);
+      ctx.moveTo(iconCenterX + 6, centerY - 5);
+      ctx.lineTo(iconCenterX + 11, centerY);
+      ctx.lineTo(iconCenterX + 6, centerY + 5);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Draw Text
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff';
+
+    // Text shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.32)';
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetY = 2;
+    ctx.fillText(text, startX + iconWidth + gap, centerY + 1);
 
     ctx.restore();
   }
