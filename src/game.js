@@ -243,7 +243,16 @@ export class Game {
 
     networkManager.on('joinError', (msg) => {
       this.onlineErrorMessage = msg;
-      setTimeout(() => { this.onlineErrorMessage = ''; }, 4000);
+      setTimeout(() => { this.onlineErrorMessage = ''; }, 5000);
+    });
+
+    networkManager.on('error', (msg) => {
+      this.onlineErrorMessage = msg;
+      setTimeout(() => { this.onlineErrorMessage = ''; }, 6000);
+    });
+
+    networkManager.on('ping', (pingVal) => {
+      // Live ping updated
     });
 
     networkManager.on('playerJoined', (room) => {
@@ -578,8 +587,9 @@ export class Game {
       if (mx >= 428 && mx <= 852 && my >= 534 && my <= 606) this.hoveredButton = '4_players';
       if (mx >= 428 && mx <= 852 && my >= 612 && my <= 682) this.hoveredButton = 'play_online';
     } else if (this.state === GAME_STATES.ONLINE_MENU) {
-      if (mx >= 380 && mx <= 900 && my >= 220 && my <= 300) this.hoveredButton = 'online_create';
-      if (mx >= 380 && mx <= 900 && my >= 330 && my <= 410) this.hoveredButton = 'online_join';
+      if (mx >= 380 && mx <= 900 && my >= 220 && my <= 320) this.hoveredButton = 'online_create';
+      if (mx >= 380 && mx <= 900 && my >= 330 && my <= 420) this.hoveredButton = 'online_join';
+      if (mx >= this.width / 2 - 150 && mx <= this.width / 2 + 150 && my >= 435 && my <= 470) this.hoveredButton = 'online_server_config';
       if (mx >= 36 && mx <= 100 && my >= 620 && my <= 684) this.hoveredButton = 'back_to_menu';
     } else if (this.state === GAME_STATES.ONLINE_CREATE) {
       // Choose Players: 2, 3, 4
@@ -686,6 +696,16 @@ export class Game {
         this.state = GAME_STATES.ONLINE_CREATE;
       } else if (this.hoveredButton === 'online_join') {
         this.joinOnlineRoom();
+      } else if (this.hoveredButton === 'online_server_config') {
+        const cur = networkManager.getServerUrl();
+        const entered = prompt('Enter custom WebSocket server URL (e.g. wss://your-server.onrender.com), or leave blank for auto-detect:', cur);
+        if (entered !== null) {
+          networkManager.setServerUrl(entered);
+          networkManager.disconnect();
+          networkManager.connect().catch(() => {});
+          this.onlineErrorMessage = entered ? `Server URL set to: ${entered}` : 'Server URL reset to auto-detect';
+          setTimeout(() => { this.onlineErrorMessage = ''; }, 3000);
+        }
       } else if (this.hoveredButton === 'back_to_menu') {
         this.state = GAME_STATES.MENU;
       }
@@ -1199,28 +1219,58 @@ export class Game {
 
     ctx.font = '800 20px "Lilita One", cursive';
     ctx.fillStyle = '#e2e8f0';
-    ctx.fillText(`Share with friends on the same Wi-Fi: http://${window.location.hostname}:5173`, this.width / 2, 155);
+    ctx.fillText(`Share with friends: ${window.location.origin}`, this.width / 2, 146);
+
+    // Live Server Connection & Ping Status
+    const isConn = networkManager.isConnected;
+    const isConnecting = networkManager.isConnecting;
+    const ping = networkManager.ping;
+    let statusText = isConn ? `🟢 SERVER ONLINE (${ping ? ping + ' ms' : 'READY'})` : (isConnecting ? '🟡 CONNECTING TO SERVER...' : '🔴 SERVER DISCONNECTED');
+    let statusColor = isConn ? '#10b981' : (isConnecting ? '#f59e0b' : '#ef4444');
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.beginPath();
+    ctx.roundRect(this.width / 2 - 180, 162, 360, 28, 14);
+    ctx.fill();
+    ctx.strokeStyle = statusColor;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '800 13px "Lilita One", cursive';
+    ctx.fillText(statusText, this.width / 2, 177);
 
     // Error Message Banner (if any)
     if (this.onlineErrorMessage) {
       ctx.fillStyle = '#ff1744';
       ctx.beginPath();
-      ctx.roundRect(this.width / 2 - 250, 175, 500, 36, 18);
+      ctx.roundRect(this.width / 2 - 270, 196, 540, 32, 16);
       ctx.fill();
       ctx.fillStyle = '#ffffff';
-      ctx.font = '900 16px "Lilita One", cursive';
-      ctx.fillText(this.onlineErrorMessage, this.width / 2, 193);
+      ctx.font = '900 14px "Lilita One", cursive';
+      ctx.fillText(this.onlineErrorMessage, this.width / 2, 212);
     }
     ctx.restore();
 
     // 2 Big Choice Cards:
     // 1. CREATE A ROOM
     const isHoverCreate = this.hoveredButton === 'online_create';
-    this.drawMenuButton(380, 230, 520, 85, '#00c853', '➕ CREATE A ROOM', '#ffffff', isHoverCreate, 'Host a match for 2 to 4 players');
+    this.drawMenuButton(380, 235, 520, 80, '#00c853', '➕ CREATE A ROOM', '#ffffff', isHoverCreate, 'Host a match for 2 to 4 players');
 
     // 2. JOIN WITH CODE
     const isHoverJoin = this.hoveredButton === 'online_join';
-    this.drawMenuButton(380, 345, 520, 85, '#38bdf8', '🔑 JOIN WITH ROOM CODE', '#ffffff', isHoverJoin, 'Enter a 4-letter room code or link');
+    this.drawMenuButton(380, 335, 520, 80, '#38bdf8', '🔑 JOIN WITH ROOM CODE', '#ffffff', isHoverJoin, 'Enter a 4-letter room code or link');
+
+    // Custom Server Config button
+    const isHoverConfig = this.hoveredButton === 'online_server_config';
+    ctx.fillStyle = isHoverConfig ? '#38bdf8' : 'rgba(255, 255, 255, 0.18)';
+    ctx.beginPath();
+    ctx.roundRect(this.width / 2 - 150, 435, 300, 32, 16);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '800 12px "Lilita One", cursive';
+    const customUrl = networkManager.getServerUrl();
+    ctx.fillText(customUrl ? `⚙️ SERVER: ${customUrl.slice(0, 24)}...` : '⚙️ CUSTOM SERVER URL (OPTIONAL)', this.width / 2, 452);
 
     // Back button
     this.drawBackButton('back_to_menu');
@@ -1300,6 +1350,44 @@ export class Game {
     ctx.fillStyle = '#1e293b';
     ctx.font = '900 48px "Lilita One", cursive';
     ctx.fillText(this.onlineRoom.code, this.width / 2, 146);
+
+    // Live Ping Pill in Lobby
+    const lobbyPing = networkManager.ping;
+    let lobbyPingColor = '#10b981';
+    let lobbyStatus = 'GOOD';
+    if (!lobbyPing || lobbyPing > 120) {
+      lobbyPingColor = '#ef4444';
+      lobbyStatus = 'SLOW';
+    } else if (lobbyPing > 60) {
+      lobbyPingColor = '#f59e0b';
+      lobbyStatus = 'OK';
+    }
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.beginPath();
+    ctx.roundRect(this.width - 200, 24, 175, 46, 12);
+    ctx.fill();
+    ctx.strokeStyle = lobbyPingColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    const lobbyPulse = (Math.sin(Date.now() / 250) + 1) * 0.5;
+    ctx.fillStyle = lobbyPingColor;
+    ctx.beginPath();
+    ctx.arc(this.width - 180, 47, 5 + lobbyPulse * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 15px "Lilita One", cursive';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(lobbyPing ? `${lobbyPing} ms` : 'PING...', this.width - 165, 42);
+
+    ctx.fillStyle = lobbyPingColor;
+    ctx.font = '800 11px "Lilita One", cursive';
+    ctx.fillText(lobbyPing ? `PING: ${lobbyStatus}` : 'ONLINE', this.width - 165, 56);
+    ctx.restore();
 
     // Share link button
     const isHoverLink = this.hoveredButton === 'copy_room_link';
@@ -1996,6 +2084,55 @@ export class Game {
       const isHoverBot = this.hoveredButton === 'ingame_bot_toggle';
       const botText = this.botsEnabled ? '🤖 BOTS: ON' : '👤 BOTS: OFF';
       this.drawHudButton(725, 16, 145, 48, botText, isHoverBot);
+    } else if (this.gameMode === 'ONLINE') {
+      // In Online matches: draw live Ping indicator
+      const pingVal = networkManager.ping;
+      let pingColor = '#10b981'; // Green (< 60ms)
+      let pingStatus = 'GOOD';
+      if (!pingVal || pingVal > 120) {
+        pingColor = '#ef4444'; // Red (> 120ms)
+        pingStatus = 'SLOW';
+      } else if (pingVal > 60) {
+        pingColor = '#f59e0b'; // Amber (60-120ms)
+        pingStatus = 'OK';
+      }
+
+      const pingX = 725;
+      const pingY = 16;
+      const pingW = 145;
+      const pingH = 48;
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+      ctx.beginPath();
+      ctx.roundRect(pingX, pingY, pingW, pingH, 12);
+      ctx.fill();
+
+      ctx.strokeStyle = pingColor;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // Pulsing status dot
+      const pulse = (Math.sin(Date.now() / 250) + 1) * 0.5;
+      ctx.fillStyle = pingColor;
+      ctx.shadowColor = pingColor;
+      ctx.shadowBlur = 6 + pulse * 6;
+      ctx.beginPath();
+      ctx.arc(pingX + 22, pingY + 24, 5 + pulse * 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Ping text
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 15px "Lilita One", cursive';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(pingVal ? `${pingVal} ms` : 'PING...', pingX + 36, pingY + 19);
+
+      ctx.fillStyle = pingColor;
+      ctx.font = '800 11px "Lilita One", cursive';
+      ctx.fillText(pingVal ? `PING: ${pingStatus}` : 'CONNECTING', pingX + 36, pingY + 35);
+      ctx.restore();
     }
 
     // Player Status Cards

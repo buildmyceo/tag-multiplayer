@@ -127,6 +127,7 @@ export class Player {
     this.isIt = data.isIt;
     this.isImmune = data.isImmune;
     this.inWater = !!data.inWater;
+    this.ping = data.ping || 0;
     this.ribbonWave += 0.22;
   }
 

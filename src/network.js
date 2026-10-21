@@ -1,15 +1,22 @@
 // WebSocket Realtime Network Client for Tag Online Multiplayer
+// Includes auto-detection for deployed cloud hosts, multi-candidate fallback, and live ping measurement
 
 export class NetworkManager {
   constructor() {
     this.ws = null;
     this.isConnected = false;
+    this.isConnecting = false;
     this.roomCode = null;
     this.isHost = false;
     this.myPlayerId = null;
     this.myPlayerIndex = 0;
     this.myColor = '#eb3b47';
     this.roomData = null;
+
+    // Realtime Ping measurement
+    this.ping = 0;
+    this.lastPingSent = 0;
+    this.pingInterval = null;
 
     // Event listeners
     this.callbacks = {};
@@ -25,63 +32,180 @@ export class NetworkManager {
     }
   }
 
-  connect() {
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
-      return Promise.resolve();
+  getServerUrl() {
+    return localStorage.getItem('tag_server_url') || '';
+  }
+
+  setServerUrl(url) {
+    if (url) {
+      localStorage.setItem('tag_server_url', url.trim());
+    } else {
+      localStorage.removeItem('tag_server_url');
+    }
+  }
+
+  // Get ordered list of candidate URLs to attempt
+  getCandidateUrls() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const hostname = window.location.hostname;
+    const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
+
+    const candidates = [];
+
+    // 1. Explicit query parameter ?server=...
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramUrl = urlParams.get('server');
+    if (paramUrl) {
+      candidates.push(paramUrl.startsWith('ws') ? paramUrl : `${protocol}//${paramUrl}`);
     }
 
-    return new Promise((resolve, reject) => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      // Primary: via Vite /ws proxy; Fallback: direct port 3001
-      const url = `${protocol}//${window.location.host}/ws`;
+    // 2. User-configured saved custom server URL
+    const saved = localStorage.getItem('tag_server_url');
+    if (saved) {
+      candidates.push(saved.startsWith('ws') ? saved : `${protocol}//${saved}`);
+    }
 
-      try {
-        this.ws = new WebSocket(url);
-      } catch (err) {
-        console.warn('Failed connecting via proxy, falling back to port 3001...', err);
-        this.ws = new WebSocket(`${protocol}//${window.location.hostname}:3001`);
+    // 3. Bundled env variable
+    const envUrl = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_WS_URL) || window.__TAG_WS_URL__;
+    if (envUrl) {
+      candidates.push(envUrl.startsWith('ws') ? envUrl : `${protocol}//${envUrl}`);
+    }
+
+    if (isLocal) {
+      // Local development:
+      // Vite proxy path first
+      candidates.push(`${protocol}//${host}/ws`);
+      // Direct backend port 3001 fallback
+      candidates.push(`${protocol}//${hostname}:3001`);
+    } else {
+      // Production deployment:
+      // Direct same-origin WebSocket (for all-in-one deploy on Render/Railway/VPS)
+      candidates.push(`${protocol}//${host}`);
+      candidates.push(`${protocol}//${host}/ws`);
+    }
+
+    // Return unique non-empty candidates
+    return [...new Set(candidates.filter(Boolean))];
+  }
+
+  connect() {
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN)) {
+      return Promise.resolve();
+    }
+    if (this.isConnecting && this.connectPromise) {
+      return this.connectPromise;
+    }
+
+    this.isConnecting = true;
+    const candidates = this.getCandidateUrls();
+
+    this.connectPromise = new Promise(async (resolve, reject) => {
+      let lastError = null;
+
+      for (const url of candidates) {
+        try {
+          await this.attemptConnection(url);
+          this.isConnecting = false;
+          this.isConnected = true;
+          this.startPing();
+          this.emit('connected');
+          resolve();
+          return;
+        } catch (err) {
+          lastError = err;
+        }
       }
 
-      this.ws.onopen = () => {
-        this.isConnected = true;
-        this.emit('connected');
-        resolve();
-      };
+      this.isConnecting = false;
+      this.isConnected = false;
+      const errMsg = 'Could not connect to multiplayer server. Please verify your connection or check Server URL.';
+      this.emit('error', errMsg);
+      reject(new Error(errMsg));
+    });
 
-      this.ws.onerror = (err) => {
-        console.error('WebSocket Error:', err);
-        // If proxy failed, try direct connection to port 3001
-        if (!this.isConnected) {
-          const directUrl = `${protocol}//${window.location.hostname}:3001`;
-          try {
-            this.ws = new WebSocket(directUrl);
-            this.ws.onopen = () => {
-              this.isConnected = true;
-              this.emit('connected');
-              resolve();
-            };
-            this.ws.onmessage = (e) => this.handleMessage(e.data);
-            this.ws.onclose = () => {
-              this.isConnected = false;
-              this.emit('disconnected');
-            };
-          } catch (e2) {
-            reject(err);
-          }
-        } else {
-          reject(err);
+    return this.connectPromise;
+  }
+
+  attemptConnection(url) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let socket = null;
+
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          try { socket?.close(); } catch (e) {}
+          reject(new Error(`Connection timeout to ${url}`));
+        }
+      }, 4000);
+
+      try {
+        socket = new WebSocket(url);
+      } catch (e) {
+        clearTimeout(timer);
+        settled = true;
+        reject(e);
+        return;
+      }
+
+      socket.onopen = () => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          this.ws = socket;
+          this.attachSocketHandlers(socket);
+          resolve();
         }
       };
 
-      this.ws.onclose = () => {
-        this.isConnected = false;
-        this.emit('disconnected');
-      };
-
-      this.ws.onmessage = (event) => {
-        this.handleMessage(event.data);
+      socket.onerror = (err) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          reject(err);
+        }
       };
     });
+  }
+
+  attachSocketHandlers(socket) {
+    socket.onmessage = (event) => {
+      this.handleMessage(event.data);
+    };
+
+    socket.onclose = () => {
+      this.isConnected = false;
+      this.stopPing();
+      this.emit('disconnected');
+    };
+
+    socket.onerror = (err) => {
+      console.warn('[TAG WebSocket Error]:', err);
+    };
+  }
+
+  // --- Realtime Ping Measurement ---
+  startPing() {
+    this.stopPing();
+    this.sendPing();
+    this.pingInterval = setInterval(() => {
+      this.sendPing();
+    }, 1500);
+  }
+
+  stopPing() {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+  }
+
+  sendPing() {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.lastPingSent = Date.now();
+      this.send({ type: 'PING', timestamp: this.lastPingSent });
+    }
   }
 
   handleMessage(dataStr) {
@@ -89,6 +213,15 @@ export class NetworkManager {
       const msg = JSON.parse(dataStr);
 
       switch (msg.type) {
+        // Latency Pong response
+        case 'PONG': {
+          const now = Date.now();
+          const rtt = Math.max(1, now - (msg.timestamp || now));
+          this.ping = this.ping ? Math.round(this.ping * 0.35 + rtt * 0.65) : rtt;
+          this.emit('ping', this.ping);
+          break;
+        }
+
         case 'ROOM_CREATED':
           this.roomCode = msg.roomCode;
           this.isHost = true;
@@ -173,7 +306,7 @@ export class NetworkManager {
         buffs
       });
     }).catch(err => {
-      this.emit('error', 'Cannot connect to online server');
+      this.emit('error', 'Cannot connect to online server. Ensure backend is running.');
     });
   }
 
@@ -185,7 +318,7 @@ export class NetworkManager {
         playerName
       });
     }).catch(err => {
-      this.emit('error', 'Cannot connect to online server');
+      this.emit('error', 'Cannot connect to online server. Ensure backend is running.');
     });
   }
 
@@ -209,7 +342,8 @@ export class NetworkManager {
       isIt: player.isIt,
       isImmune: player.isImmune,
       inWater: player.inWater,
-      buff: player.buff
+      buff: player.buff,
+      ping: this.ping || 0
     });
   }
 
@@ -252,11 +386,13 @@ export class NetworkManager {
   }
 
   disconnect() {
+    this.stopPing();
     if (this.ws) {
-      this.ws.close();
+      try { this.ws.close(); } catch (e) {}
       this.ws = null;
       this.isConnected = false;
       this.roomCode = null;
+      this.ping = 0;
     }
   }
 }

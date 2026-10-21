@@ -125,6 +125,19 @@ function initGame() {
 
   setupCanvasRecovery(canvas, game);
 
+  // Auto-join online room if URL contains ?room=CODE
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomParam = urlParams.get('room');
+    if (roomParam) {
+      setTimeout(() => {
+        game.joinOnlineRoom(roomParam.trim().toUpperCase());
+      }, 500);
+    }
+  } catch (e) {
+    console.warn('[AutoJoin error]:', e);
+  }
+
   // Resize canvas display while maintaining 16:9 internal resolution (1280x720)
   function resize() {
     const c = document.getElementById('game-canvas') || canvas;
