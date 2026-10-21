@@ -2224,38 +2224,28 @@ export class Game {
     this.drawCuteLeaf(ctx, cardX + cardW - 6, cardY + 150, 46, 23, Math.PI / 2.4, '#00e676');
     this.drawCuteLeaf(ctx, cardX + cardW - 2, cardY + 220, 42, 21, Math.PI / 1.6, '#00c853');
 
-    // 3. Frosted Glass Card
+    // 3. Frosted Glass Card (Solid color)
     ctx.save();
     ctx.shadowColor = 'rgba(56, 189, 248, 0.45)';
     ctx.shadowBlur = 26;
-    ctx.fillStyle = 'rgba(18, 55, 115, 0.62)';
+    ctx.fillStyle = '#113568';
     ctx.beginPath();
     ctx.roundRect(cardX, cardY, cardW, cardH, 36);
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    // Glass gradient reflection
-    const cardGrad = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardH);
-    cardGrad.addColorStop(0, 'rgba(255, 255, 255, 0.18)');
-    cardGrad.addColorStop(0.35, 'rgba(56, 189, 248, 0.10)');
-    cardGrad.addColorStop(1, 'rgba(10, 30, 75, 0.45)');
-    ctx.fillStyle = cardGrad;
-    ctx.beginPath();
-    ctx.roundRect(cardX, cardY, cardW, cardH, 36);
-    ctx.fill();
-
-    // Soft glowing border
-    ctx.strokeStyle = 'rgba(186, 230, 253, 0.75)';
+    // Soft glowing border (Solid color)
+    ctx.strokeStyle = '#7dd3fc';
     ctx.lineWidth = 3.5;
     ctx.stroke();
     ctx.restore();
 
-    // 4. Three 3D Candy Buttons
+    // 4. Three 3D Candy Buttons (Solid colors)
     const btnW = 340;
     const btnH = 64;
     const btnX = (this.width - btnW) / 2; // 470
 
-    // RESUME Button
+    // RESUME Button (Solid Green)
     this.drawCandyButton(
       ctx,
       btnX,
@@ -2265,14 +2255,13 @@ export class Game {
       'play',
       'RESUME',
       {
-        faceTop: '#00f589',
-        faceBottom: '#00c853',
-        shadow: '#00873a'
+        face: '#00e676',
+        shadow: '#00a843'
       },
       this.hoveredButton === 'pause_resume'
     );
 
-    // SETTINGS Button
+    // SETTINGS Button (Solid Blue)
     this.drawCandyButton(
       ctx,
       btnX,
@@ -2282,14 +2271,13 @@ export class Game {
       'settings',
       'SETTINGS',
       {
-        faceTop: '#29b6f6',
-        faceBottom: '#0288d1',
-        shadow: '#01579b'
+        face: '#00a8ff',
+        shadow: '#0077c2'
       },
       this.hoveredButton === 'pause_settings'
     );
 
-    // EXIT Button
+    // EXIT Button (Solid Pink)
     this.drawCandyButton(
       ctx,
       btnX,
@@ -2299,14 +2287,13 @@ export class Game {
       'exit',
       'EXIT',
       {
-        faceTop: '#ff3b77',
-        faceBottom: '#e6005c',
-        shadow: '#99003d'
+        face: '#ff2a6d',
+        shadow: '#c2185b'
       },
       this.hoveredButton === 'pause_exit'
     );
 
-    // 5. Colorful Sprinkles around PAUSE
+    // 5. Colorful Sprinkles around PAUSE (Solid colors)
     // Left Sprinkles
     this.drawPauseSprinkle(ctx, 434, 154, 11, 28, -0.65, '#ff2a6d'); // Pink
     this.drawPauseSprinkle(ctx, 424, 194, 10, 22, -0.15, '#38bdf8'); // Cyan
@@ -2327,7 +2314,7 @@ export class Game {
     ctx.translate(x, y);
     ctx.rotate(angle);
 
-    // Leaf body
+    // Leaf body (Solid color)
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(0, 0);
@@ -2336,7 +2323,7 @@ export class Game {
     ctx.fill();
 
     // Leaf center vein shine
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
     ctx.beginPath();
@@ -2355,12 +2342,6 @@ export class Game {
     ctx.beginPath();
     ctx.roundRect(-w / 2, -h / 2, w, h, w / 2);
     ctx.fill();
-
-    // Subtle highlight
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
-    ctx.beginPath();
-    ctx.roundRect(-w / 2 + 1.5, -h / 2 + 1.5, w - 3, h * 0.45, w / 2);
-    ctx.fill();
     ctx.restore();
   }
 
@@ -2372,7 +2353,7 @@ export class Game {
 
     const text = 'PAUSE';
 
-    // Layer 1: Dark Navy drop shadow
+    // Layer 1: Dark Navy drop shadow (Solid color)
     ctx.fillStyle = '#081736';
     ctx.strokeStyle = '#081736';
     ctx.lineWidth = 24;
@@ -2380,7 +2361,7 @@ export class Game {
     ctx.strokeText(text, cx, cy + 12);
     ctx.fillText(text, cx, cy + 12);
 
-    // Layer 2: Vibrant magenta/purple 3D extrusion
+    // Layer 2: Vibrant magenta/purple 3D extrusion (Solid color)
     ctx.fillStyle = '#c026d3';
     ctx.strokeStyle = '#c026d3';
     ctx.lineWidth = 18;
@@ -2388,25 +2369,15 @@ export class Game {
     ctx.strokeText(text, cx, cy + 6);
     ctx.fillText(text, cx, cy + 6);
 
-    // Layer 3: Dark blue/navy outline
+    // Layer 3: Dark blue/navy outline (Solid color)
     ctx.strokeStyle = '#0c2247';
     ctx.lineWidth = 14;
     ctx.lineJoin = 'round';
     ctx.strokeText(text, cx, cy);
 
-    // Layer 4: Gradient face (white at top to light ice-cyan at bottom)
-    const grad = ctx.createLinearGradient(cx, cy - 45, cx, cy + 30);
-    grad.addColorStop(0, '#ffffff');
-    grad.addColorStop(0.35, '#f0f9ff');
-    grad.addColorStop(0.7, '#bae6fd');
-    grad.addColorStop(1, '#7dd3fc');
-    ctx.fillStyle = grad;
+    // Layer 4: Solid white face
+    ctx.fillStyle = '#ffffff';
     ctx.fillText(text, cx, cy);
-
-    // Layer 5: Inner white shine stroke
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.lineWidth = 2.5;
-    ctx.strokeText(text, cx, cy);
 
     ctx.restore();
   }
@@ -2417,34 +2388,22 @@ export class Game {
     const yOffset = isHovered ? -2 : 0;
     const currentY = y + yOffset;
 
-    // 1. Bottom 3D Bevel / Shadow
+    // 1. Bottom 3D Bevel / Shadow (Solid color)
     ctx.fillStyle = colors.shadow;
     ctx.beginPath();
     ctx.roundRect(x, y + 8, w, h - 2, 32);
     ctx.fill();
 
-    // 2. Button Face Gradient
-    const faceGrad = ctx.createLinearGradient(x, currentY, x, currentY + h);
-    faceGrad.addColorStop(0, colors.faceTop);
-    faceGrad.addColorStop(1, colors.faceBottom);
-    ctx.fillStyle = faceGrad;
+    // 2. Button Face (Solid color)
+    ctx.fillStyle = colors.face;
     ctx.beginPath();
     ctx.roundRect(x, currentY, w, h, 32);
     ctx.fill();
 
-    // 3. Subtle white rim border
-    ctx.strokeStyle = isHovered ? '#ffffff' : 'rgba(255, 255, 255, 0.6)';
+    // 3. Subtle white rim border (Solid color)
+    ctx.strokeStyle = isHovered ? '#ffffff' : 'rgba(255, 255, 255, 0.7)';
     ctx.lineWidth = isHovered ? 2.5 : 1.8;
     ctx.stroke();
-
-    // 4. Glossy Top Bubble Highlight
-    const hlGrad = ctx.createLinearGradient(x, currentY + 3, x, currentY + 22);
-    hlGrad.addColorStop(0, 'rgba(255, 255, 255, 0.55)');
-    hlGrad.addColorStop(1, 'rgba(255, 255, 255, 0.08)');
-    ctx.fillStyle = hlGrad;
-    ctx.beginPath();
-    ctx.roundRect(x + 16, currentY + 4, w - 32, 20, 10);
-    ctx.fill();
 
     // 5. Measure text and icon to center them as a group
     ctx.font = '900 28px "Lilita One", cursive';

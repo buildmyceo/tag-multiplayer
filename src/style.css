@@ -33,7 +33,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at center, #56baf8 0%, #2087dc 100%);
+  background: #2087dc;
   overflow: hidden;
 }
 
