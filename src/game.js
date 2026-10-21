@@ -1384,43 +1384,8 @@ export class Game {
     ctx.font = '900 48px "Lilita One", cursive';
     ctx.fillText(this.onlineRoom.code, this.width / 2, 146);
 
-    // Live Ping Pill in Lobby
-    const lobbyPing = networkManager.ping;
-    let lobbyPingColor = '#10b981';
-    let lobbyStatus = 'GOOD';
-    if (!lobbyPing || lobbyPing > 120) {
-      lobbyPingColor = '#ef4444';
-      lobbyStatus = 'SLOW';
-    } else if (lobbyPing > 60) {
-      lobbyPingColor = '#f59e0b';
-      lobbyStatus = 'OK';
-    }
-
-    ctx.save();
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-    ctx.beginPath();
-    ctx.roundRect(this.width - 200, 24, 175, 46, 12);
-    ctx.fill();
-    ctx.strokeStyle = lobbyPingColor;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    const lobbyPulse = (Math.sin(Date.now() / 250) + 1) * 0.5;
-    ctx.fillStyle = lobbyPingColor;
-    ctx.beginPath();
-    ctx.arc(this.width - 180, 47, 5 + lobbyPulse * 1.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '900 15px "Lilita One", cursive';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(lobbyPing ? `${lobbyPing} ms` : 'PING...', this.width - 165, 42);
-
-    ctx.fillStyle = lobbyPingColor;
-    ctx.font = '800 11px "Lilita One", cursive';
-    ctx.fillText(lobbyPing ? `PING: ${lobbyStatus}` : 'ONLINE', this.width - 165, 56);
-    ctx.restore();
+    // Live Ping Widget in Lobby
+    this.drawPingWidget(this.width - 180, 24, 155, 52);
 
     // Share link button
     const isHoverLink = this.hoveredButton === 'copy_room_link';
@@ -2011,6 +1976,14 @@ export class Game {
       this.particles.draw(ctx);
     } catch (e) {}
 
+    if (!this.isMatchStarted) {
+      try {
+        this.renderCountdownOverlay(ctx);
+      } catch (e) {
+        console.warn('renderCountdownOverlay error:', e);
+      }
+    }
+
     try {
       this.renderHUD(ctx);
     } catch (e) {
@@ -2036,14 +2009,6 @@ export class Game {
         ctx.fillText(this.toastMessage, this.width / 2, 102);
         ctx.restore();
       } catch (e) {}
-    }
-
-    if (!this.isMatchStarted) {
-      try {
-        this.renderCountdownOverlay(ctx);
-      } catch (e) {
-        console.warn('renderCountdownOverlay error:', e);
-      }
     }
 
     if (this.isPaused) {
@@ -2120,54 +2085,80 @@ export class Game {
 
     // 3. Online Live Ping Indicator in Top-Right (Online matches only)
     if (this.gameMode === 'ONLINE') {
-      const pingVal = networkManager.ping;
-      let pingColor = '#10b981'; // Green (< 60ms)
-      let pingStatus = 'GOOD';
-      if (!pingVal || pingVal > 120) {
-        pingColor = '#ef4444'; // Red (> 120ms)
-        pingStatus = 'SLOW';
-      } else if (pingVal > 60) {
-        pingColor = '#f59e0b'; // Amber (60-120ms)
-        pingStatus = 'OK';
-      }
-
-      const pingX = this.width - 170;
-      const pingY = 14;
-      const pingW = 150;
-      const pingH = 52;
-
-      ctx.save();
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-      ctx.beginPath();
-      ctx.roundRect(pingX, pingY, pingW, pingH, 14);
-      ctx.fill();
-
-      ctx.strokeStyle = pingColor;
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-
-      // Pulsing status dot
-      const pulse = (Math.sin(Date.now() / 250) + 1) * 0.5;
-      ctx.fillStyle = pingColor;
-      ctx.shadowColor = pingColor;
-      ctx.shadowBlur = 6 + pulse * 6;
-      ctx.beginPath();
-      ctx.arc(pingX + 22, pingY + 26, 5 + pulse * 1.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.shadowBlur = 0;
-
-      // Ping text
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '900 15px "Lilita One", cursive';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(pingVal ? `${pingVal} ms` : 'PING...', pingX + 36, pingY + 20);
-
-      ctx.fillStyle = pingColor;
-      ctx.font = '800 11px "Lilita One", cursive';
-      ctx.fillText(pingVal ? `PING: ${pingStatus}` : 'CONNECTING', pingX + 36, pingY + 36);
-      ctx.restore();
+      this.drawPingWidget(this.width - 165, 14, 150, 52);
     }
+
+    ctx.restore();
+  }
+
+  drawPingWidget(x, y, w = 150, h = 52) {
+    const ctx = this.ctx;
+    const pingVal = networkManager.ping;
+
+    let pingColor = '#10b981'; // Green (< 60ms)
+    let pingStatus = 'GOOD';
+    let activeBars = 3;
+
+    if (!pingVal) {
+      pingColor = '#38bdf8'; // Sky cyan while measuring
+      pingStatus = 'MEASURING...';
+      activeBars = 1;
+    } else if (pingVal > 120) {
+      pingColor = '#ef4444'; // Red (> 120ms)
+      pingStatus = 'SLOW';
+      activeBars = 1;
+    } else if (pingVal > 60) {
+      pingColor = '#f59e0b'; // Amber (60-120ms)
+      pingStatus = 'FAIR';
+      activeBars = 2;
+    }
+
+    ctx.save();
+
+    // Frosted dark glass container
+    ctx.fillStyle = 'rgba(10, 24, 48, 0.75)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 14);
+    ctx.fill();
+
+    // Glowing border matching connection status
+    ctx.strokeStyle = pingColor;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = pingColor;
+    ctx.shadowBlur = 8;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Graduated 3-bar signal icon with pulsing effect
+    const barBaseX = x + 16;
+    const barBottomY = y + h - 14;
+    const barW = 4;
+    const barSpacing = 7;
+    const barHeights = [9, 15, 21];
+
+    for (let i = 0; i < 3; i++) {
+      const bh = barHeights[i];
+      const bx = barBaseX + i * barSpacing;
+      const by = barBottomY - bh;
+      const isLit = i < activeBars;
+
+      ctx.fillStyle = isLit ? pingColor : 'rgba(255, 255, 255, 0.2)';
+      ctx.beginPath();
+      ctx.roundRect(bx, by, barW, bh, 2);
+      ctx.fill();
+    }
+
+    // Ping in milliseconds (e.g. "32 ms")
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 16px "Lilita One", cursive';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(pingVal ? `${pingVal} ms` : 'PING...', x + 44, y + 18);
+
+    // Status label (e.g. "PING: GOOD")
+    ctx.fillStyle = pingColor;
+    ctx.font = '800 11px "Lilita One", cursive';
+    ctx.fillText(pingVal ? `PING: ${pingStatus}` : 'ONLINE', x + 44, y + 34);
 
     ctx.restore();
   }
